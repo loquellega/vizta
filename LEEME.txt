@@ -1,0 +1,8 @@
+Vizta v0.2 · visor de señales
+Colección Alchemy of Meaning (Alquimia del Significado)
+
+Instalación: sube esta carpeta a tu hosting (debe servirse por HTTPS) y abre index.html desde el teléfono.
+La cámara, la ubicación y la orientación solo funcionan con HTTPS.
+
+Diseño, investigación y desarrollo: Héctor Cruz Juárez — https://hectorcruz.com.mx
+Licencia GPL-3.0-or-later (ver LICENSE).

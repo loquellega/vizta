@@ -1,0 +1,1042 @@
+<!doctype html>
+<!--
+  Vizta · visor de señales (hipótesis 0.1)
+  Una ventana para ver lo que nos atraviesa: satélites, aviones, antenas y tu propio teléfono,
+  dibujados sobre la cámara y sobre un plano de tu entorno alterado por esas emisiones.
+  Parte de la colección Alchemy of Meaning (Alquimia del Significado).
+  © 2026 Héctor Cruz Juárez · https://hectorcruz.com.mx
+  Software libre bajo licencia GPL-3.0-or-later.
+  Incluye satellite.js 4.1.4 (MIT). Datos: CelesTrak, OpenStreetMap (ODbL) vía Overpass, adsb.lol / airplanes.live / OpenSky.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<title>Vizta · visor de señales</title>
+<style>
+:root{
+  --a-bg:#0a0a0a; --a-panel:#101010; --a-bar:#1c1c1c; --a-line:#2e2e2e; --a-line-ctl:#3a3a3a; --a-hover:#1f1f1f;
+  --a-ink:#d2d2d2; --a-ink-strong:#fff; --a-ink-dim:#8f8f8f;
+  --a-accent:#76c411; --a-accent-ink:#a5e04a; --a-accent-bg:#1b2512;
+  --a-radius:3px; --a-radius-sm:2px; --a-gap:8px; --a-pad:10px; --a-bar-h:24px; --a-ctl-h:32px; --a-t:120ms;
+  --a-font:Inter,Arial,Helvetica,sans-serif; --a-size:12px; --a-size-sm:11px;
+  --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px); --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--a-bg);color:var(--a-ink);font:var(--a-size)/1.4 var(--a-font);font-variant-numeric:tabular-nums;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{touch-action:none}
+video{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+.win{position:fixed;background:var(--a-panel);border:1px solid var(--a-line);border-radius:var(--a-radius);overflow:hidden;z-index:5}
+.bar{height:var(--a-bar-h);background:var(--a-bar);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;font-size:var(--a-size-sm);color:var(--a-ink)}
+.bar .t{cursor:pointer;flex:1}
+.bar a,.bar .x{color:var(--a-ink);text-decoration:none;cursor:pointer;background:none;border:0;height:auto;padding:0}
+.body{padding:var(--a-pad);display:grid;gap:8px}
+.win.cerrada .body{display:none}
+.sec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--a-ink-dim);border-top:1px solid var(--a-line);padding-top:8px}
+button{font:inherit;color:var(--a-ink);background:var(--a-bg);border:1px solid var(--a-line-ctl);border-radius:var(--a-radius-sm);height:28px;padding:0 10px;cursor:pointer;transition:color var(--a-t),border-color var(--a-t),background-color var(--a-t)}
+button:hover{background:var(--a-hover)}
+button[aria-pressed="true"]{background:var(--a-accent-bg);border-color:var(--a-accent);color:var(--a-accent-ink)}
+button.prin{height:var(--a-ctl-h);border-color:var(--a-accent);color:var(--a-accent-ink);background:var(--a-accent-bg)}
+:focus-visible{outline:2px solid var(--a-accent);outline-offset:1px}
+.seg{display:flex}
+.seg button{flex:1;border-radius:0;margin-left:-1px}
+.seg button:first-child{border-radius:var(--a-radius-sm) 0 0 var(--a-radius-sm);margin-left:0}
+.seg button:last-child{border-radius:0 var(--a-radius-sm) var(--a-radius-sm) 0}
+.seg button[aria-selected="true"]{color:var(--a-ink-strong);background:var(--a-hover);border-color:var(--a-ink-dim);position:relative}
+.lbl{color:var(--a-ink-dim)}
+.val{color:var(--a-ink-strong)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center;min-height:18px}
+.capas{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.capas button{height:26px;font-size:11px;text-align:left;padding:0 8px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:124px;height:16px;background:transparent;margin:0;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:linear-gradient(to right,var(--a-accent) var(--p),var(--a-line-ctl) var(--p))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:6px;height:14px;margin-top:-6px;background:var(--a-ink-strong);border-radius:1px;border:0}
+input[type=range]::-moz-range-track{height:2px;background:var(--a-line-ctl)}
+input[type=range]::-moz-range-progress{height:2px;background:var(--a-accent)}
+input[type=range]::-moz-range-thumb{width:6px;height:14px;border:0;border-radius:1px;background:var(--a-ink-strong)}
+.meter{height:3px;background:var(--a-line);border-radius:2px;overflow:hidden;width:72px}
+.meter>i{display:block;height:100%;background:var(--a-accent);width:0}
+.est{font-size:11px;display:grid;gap:2px}
+.est .ok{color:var(--a-accent-ink)}
+#ui{left:calc(8px + var(--sl));top:calc(8px + var(--st));width:min(268px,calc(100vw - 16px));max-height:calc(100vh - 110px - var(--st) - var(--sb));overflow:auto;scrollbar-width:thin;scrollbar-color:var(--a-line-ctl) transparent}
+#dock{left:50%;transform:translateX(-50%);bottom:calc(8px + var(--sb));display:flex;gap:14px;padding:6px 12px;align-items:center;flex-wrap:wrap;justify-content:center;width:max-content;max-width:calc(100vw - 16px)}
+#dock>div{display:grid;gap:1px;min-width:44px}
+#dock .lbl{font-size:10px}
+#info{right:calc(8px + var(--sr));top:calc(8px + var(--st));width:min(250px,calc(100vw - 16px));display:none}
+#info.ver{display:block}
+#info .body{font-size:11px;gap:4px}
+#inicio{left:50%;top:50%;transform:translate(-50%,-50%);width:min(390px,calc(100vw - 24px));z-index:10}
+#inicio p{margin:0;color:var(--a-ink)}
+#inicio .nota{color:var(--a-ink-dim);font-size:11px}
+#acerca{left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,calc(100vw - 24px));display:none;z-index:11}
+#acerca.ver{display:block}
+#acerca p{margin:0}
+#acerca a{color:var(--a-ink-strong)}
+#ver{position:fixed;right:calc(8px + var(--sr));bottom:calc(8px + var(--sb));display:none;width:28px;padding:0;z-index:6}
+body.sinui .ui{display:none!important}
+body.sinui #ver{display:block}
+body.arrancando .ui{display:none!important}
+body:not(.m-visor) .solo-visor{display:none!important}
+body.m-visor .solo-mapa{display:none!important}
+@media (max-width:520px){ #dock{gap:10px;padding:5px 8px} #dock .opc{display:none} }
+</style>
+</head>
+<body class="arrancando m-visor">
+<video id="vid" playsinline muted autoplay></video>
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+
+<div id="inicio" class="win">
+  <div class="bar"><span>i · Vizta</span><span class="lbl">hipótesis 0.2</span></div>
+  <div class="body">
+    <p class="val" style="font-size:14px">Una óptica para ver lo que nos atraviesa.</p>
+    <p>Cada línea es una señal: satélites, aviones, antenas, redes, tu propio teléfono, el calor de tu cuerpo y la lluvia de muones que llega del cosmos. Vienen de donde están sus fuentes y cruzan el cuerpo que está frente a la lente.</p>
+    <p class="nota">Las líneas mezclan señales medidas, conocidas e imaginadas, y cada una dice de qué tipo es. Usa cámara, orientación y ubicación; tu posición aproximada se usa para consultar fuentes públicas (CelesTrak, OpenStreetMap, ADS-B). La imagen de la cámara no sale de tu teléfono.</p>
+    <button id="abrir" class="prin">abrir el visor</button>
+    <button id="sinSensores">ver sin sensores (arrastrar para mirar)</button>
+  </div>
+</div>
+
+<div id="ui" class="win ui">
+  <div class="bar"><span class="t" id="uiT">Vizta · visor de señales</span><button class="x" id="iBtn" aria-label="Acerca de">i</button></div>
+  <div class="body">
+    <div class="seg" role="tablist" aria-label="Modo">
+      <button role="tab" id="mVisor" aria-selected="true">visor</button>
+      <button role="tab" id="mVentana" aria-selected="false">ventana</button>
+      <button role="tab" id="mPlano" aria-selected="false">plano</button>
+    </div>
+    <div class="seg solo-visor" role="tablist" aria-label="Cámara">
+      <button role="tab" id="cFrontal" aria-selected="true">cámara frontal</button>
+      <button role="tab" id="cTrasera" aria-selected="false">trasera</button>
+    </div>
+    <div class="sec solo-visor">sintonía</div>
+    <div class="row solo-visor"><span class="lbl">espectro</span><input type="range" id="sEsp" min="0" max="1" step="0.001"><span class="val" id="vEsp"></span></div>
+    <div class="row solo-visor lbl" id="vEspD" style="justify-content:flex-end;font-size:11px"></div>
+    <div class="row solo-visor"><span class="lbl">señales imaginadas</span><input type="range" id="sImag" min="0" max="80" step="1"><span class="val" id="vImag"></span></div>
+    <div class="row solo-visor"><span class="lbl">obsidiana</span><input type="range" id="sObs" min="0" max="1" step="0.01"><span class="val" id="vObs"></span></div>
+    <div class="row solo-visor"><span class="lbl">calor</span><input type="range" id="sCal" min="0" max="1" step="0.01"><span class="val" id="vCal"></span></div>
+    <div class="sec">capas</div>
+    <div class="capas" id="capas"></div>
+    <div class="sec">ajuste</div>
+    <div class="row"><span class="lbl">vibración</span><input type="range" id="sAmp" min="0" max="1.5" step="0.01"><span class="val" id="vAmp"></span></div>
+    <div class="row"><span class="lbl">campo de visión</span><input type="range" id="sFov" min="30" max="100" step="1"><span class="val" id="vFov"></span></div>
+    <div class="row"><span class="lbl">corrección norte</span><input type="range" id="sNorte" min="-45" max="45" step="1"><span class="val" id="vNorte"></span></div>
+    <div class="row solo-mapa"><span class="lbl">radio del plano</span><input type="range" id="sRadio" min="120" max="1200" step="10"><span class="val" id="vRadio"></span></div>
+    <div class="sec">fuentes</div>
+    <div class="est" id="est"></div>
+  </div>
+</div>
+
+<div id="info" class="win ui">
+  <div class="bar"><span id="infoT">señal</span><button class="x" id="infoX" aria-label="Cerrar">×</button></div>
+  <div class="body" id="infoB"></div>
+</div>
+
+<div id="dock" class="win ui">
+  <div><span class="lbl">rumbo</span><span class="val" id="dRumbo">—</span></div>
+  <div><span class="lbl">altura</span><span class="val" id="dIncl">—</span></div>
+  <div class="opc"><span class="lbl">posición</span><span class="val" id="dPos">—</span></div>
+  <div class="solo-visor"><span class="lbl">te atraviesan</span><span class="val" id="dCru">0</span></div>
+  <div class="solo-visor"><span class="lbl">muones</span><span class="val" id="dMu">0</span></div>
+  <div class="opc"><span class="lbl">sobre ti</span><span class="val" id="dSat">—</span></div>
+  <div class="opc"><span class="lbl">aviones</span><span class="val" id="dAv">—</span></div>
+  <div class="opc"><span class="lbl">antenas</span><span class="val" id="dAnt">—</span></div>
+  <div><span class="lbl">campo</span><div class="meter"><i id="dCampo"></i></div></div>
+</div>
+
+<div id="acerca" class="win">
+  <div class="bar"><span>Acerca de Vizta</span><button class="x" id="acercaX" aria-label="Cerrar">×</button></div>
+  <div class="body">
+    <p class="val">Vizta · visor de señales · hipótesis 0.2</p>
+    <p>Una ventana para concientizarnos del espectro que habitamos. Cada señal se dibuja donde está: los satélites con sus órbitas reales (CelesTrak), los aviones con su transpondedor ADS-B (adsb.lol, airplanes.live u OpenSky), las antenas mapeadas en OpenStreetMap, el cinturón geoestacionario de donde baja la televisión satelital y tu propio teléfono, que también emite.</p>
+    <p class="lbl">Las posiciones son reales; las ondas son una interpretación: su separación sigue la longitud de onda de cada banda y su fuerza baja con la distancia.</p>
+    <p>Diseño, investigación y desarrollo: Héctor Cruz Juárez — <a href="https://hectorcruz.com.mx" target="_blank" rel="noopener">hectorcruz.com.mx</a><br>Colección Alchemy of Meaning.</p>
+    <p class="lbl">Software libre bajo licencia GPL-3.0-or-later. Incluye satellite.js (MIT). Datos de mapa © colaboradores de OpenStreetMap (ODbL).</p>
+  </div>
+</div>
+
+<button id="ver" aria-label="Mostrar interfaz">▪</button>
+
+<script>
+/*!
+ * satellite-js v4.1.4
+ * (c) 2013 Shashwat Kandadai and UCSC
+ * https://github.com/shashwatak/satellite-js
+ * License: MIT
+ */
+
+!function(o,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(o="undefined"!=typeof globalThis?globalThis:o||self).satellite=t()}(this,(function(){"use strict";var o=Math.PI,t=2*o,e=o/180,s=180/o,n=1440,a=398600.5,d=6378.137,r=60/Math.sqrt(650944.0944816993),i=d*r/60,c=1/r,h=.00108262998905,m=-253215306e-14,l=-161098761e-14,p=m/h,x=2/3;function g(o,t){for(var e=[31,o%4==0?29:28,31,30,31,30,31,31,30,31,30,31],s=Math.floor(t),n=1,a=0;s>a+e[n-1]&&n<12;)a+=e[n-1],n+=1;var d=n,r=s-a,i=24*(t-s),c=Math.floor(i);i=60*(i-c);var h=Math.floor(i);return{mon:d,day:r,hr:c,minute:h,sec:60*(i-h)}}function M(o,t,e,s,n,a){var d=arguments.length>6&&void 0!==arguments[6]?arguments[6]:0;return 367*o-Math.floor(7*(o+Math.floor((t+9)/12))*.25)+Math.floor(275*t/9)+e+1721013.5+((d/6e4+a/60+n)/60+s)/24}function f(o,t,e,s,n,a,d){if(o instanceof Date){var r=o;return M(r.getUTCFullYear(),r.getUTCMonth()+1,r.getUTCDate(),r.getUTCHours(),r.getUTCMinutes(),r.getUTCSeconds(),r.getUTCMilliseconds())}return M(o,t,e,s,n,a,d)}function u(e,s){var n,a,d,r,i,c,h,m,l,p,x,g,M,f,u,z,v,y,b=e.e3,q=e.ee2,w=e.peo,T=e.pgho,j=e.pho,E=e.pinco,F=e.plo,A=e.se2,C=e.se3,L=e.sgh2,S=e.sgh3,U=e.sgh4,D=e.sh2,I=e.sh3,R=e.si2,O=e.si3,_=e.sl2,k=e.sl3,P=e.sl4,Z=e.t,G=e.xgh2,H=e.xgh3,Y=e.xgh4,$=e.xh2,B=e.xh3,J=e.xi2,K=e.xi3,N=e.xl2,Q=e.xl3,V=e.xl4,W=e.zmol,X=e.zmos,oo=s.init,to=s.opsmode,eo=s.ep,so=s.inclp,no=s.nodep,ao=s.argpp,ro=s.mp;y=X+119459e-10*Z,"y"===oo&&(y=X),v=y+.0335*Math.sin(y);var io=A*(h=.5*(f=Math.sin(v))*f-.25)+C*(m=-.5*f*Math.cos(v)),co=R*h+O*m,ho=_*h+k*m+P*f,mo=L*h+S*m+U*f,lo=D*h+I*m;return y=W+.00015835218*Z,"y"===oo&&(y=W),v=y+.1098*Math.sin(y),l=io+(q*(h=.5*(f=Math.sin(v))*f-.25)+b*(m=-.5*f*Math.cos(v))),g=co+(J*h+K*m),M=ho+(N*h+Q*m+V*f),p=mo+(G*h+H*m+Y*f),x=lo+($*h+B*m),"n"===oo&&(M-=F,p-=T,x-=j,so+=g-=E,eo+=l-=w,r=Math.sin(so),d=Math.cos(so),so>=.2?(ao+=p-=d*(x/=r),no+=x,ro+=M):(n=r*(c=Math.sin(no)),a=r*(i=Math.cos(no)),n+=x*i+g*d*c,a+=-x*c+g*d*i,(no%=t)<0&&"a"===to&&(no+=t),u=ro+ao+d*no,u+=M+p-g*no*r,z=no,(no=Math.atan2(n,a))<0&&"a"===to&&(no+=t),Math.abs(z-no)>o&&(no<z?no+=t:no-=t),ao=u-(ro+=M)-d*no)),{ep:eo,inclp:so,nodep:no,argpp:ao,mp:ro}}function z(o){var s=(o-2451545)/36525,n=-62e-7*s*s*s+.093104*s*s+3164400184.812866*s+67310.54841;return(n=n*e/240%t)<0&&(n+=t),n}function v(){return(arguments.length<=0?void 0:arguments[0])instanceof Date||arguments.length>1?z(f.apply(void 0,arguments)):z.apply(void 0,arguments)}function y(e,s){var n,a,c,m,l,g,M,f,z,v,y,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R;e.t=s,e.error=0;var O=e.mo+e.mdot*e.t,_=e.argpo+e.argpdot*e.t,k=e.nodeo+e.nodedot*e.t;f=_,C=O;var P=e.t*e.t;if(S=k+e.nodecf*P,j=1-e.cc1*e.t,E=e.bstar*e.cc4*e.t,F=e.t2cof*P,1!==e.isimp){g=e.omgcof*e.t;var Z=1+e.eta*Math.cos(O);C=O+(T=g+e.xmcof*(Z*Z*Z-e.delmo)),f=_-T,b=(y=P*e.t)*e.t,j=j-e.d2*P-e.d3*y-e.d4*b,E+=e.bstar*e.cc5*(Math.sin(C)-e.sinmao),F=F+e.t3cof*y+b*(e.t4cof+e.t*e.t5cof)}L=e.no;var G=e.ecco;if(A=e.inclo,"d"===e.method){q=e.t;var H=function(o){var e,s,n,a,d,r,i,c,h=o.irez,m=o.d2201,l=o.d2211,p=o.d3210,x=o.d3222,g=o.d4410,M=o.d4422,f=o.d5220,u=o.d5232,z=o.d5421,v=o.d5433,y=o.dedt,b=o.del1,q=o.del2,w=o.del3,T=o.didt,j=o.dmdt,E=o.dnodt,F=o.domdt,A=o.argpo,C=o.argpdot,L=o.t,S=o.tc,U=o.gsto,D=o.xfact,I=o.xlamo,R=o.no,O=o.atime,_=o.em,k=o.argpm,P=o.inclm,Z=o.xli,G=o.mm,H=o.xni,Y=o.nodem,$=o.nm,B=.13130908,J=2.8843198,K=.37448087,N=5.7686396,Q=.95240898,V=1.8014998,W=1.050833,X=4.4108898,oo=259200,to=0,eo=0,so=(U+.0043752690880113*S)%t;if(_+=y*L,P+=T*L,k+=F*L,Y+=E*L,G+=j*L,0!==h){(0===O||L*O<=0||Math.abs(L)<Math.abs(O))&&(O=0,H=R,Z=I),e=L>0?720:-720;for(var no=381;381===no;)2!==h?(i=b*Math.sin(Z-B)+q*Math.sin(2*(Z-J))+w*Math.sin(3*(Z-K)),d=H+D,r=b*Math.cos(Z-B)+2*q*Math.cos(2*(Z-J))+3*w*Math.cos(3*(Z-K)),r*=d):(n=(c=A+C*O)+c,s=Z+Z,i=m*Math.sin(n+Z-N)+l*Math.sin(Z-N)+p*Math.sin(c+Z-Q)+x*Math.sin(-c+Z-Q)+g*Math.sin(n+s-V)+M*Math.sin(s-V)+f*Math.sin(c+Z-W)+u*Math.sin(-c+Z-W)+z*Math.sin(c+s-X)+v*Math.sin(-c+s-X),d=H+D,r=m*Math.cos(n+Z-N)+l*Math.cos(Z-N)+p*Math.cos(c+Z-Q)+x*Math.cos(-c+Z-Q)+f*Math.cos(c+Z-W)+u*Math.cos(-c+Z-W)+2*g*Math.cos(n+s-V)+M*Math.cos(s-V)+z*Math.cos(c+s-X)+v*Math.cos(-c+s-X),r*=d),Math.abs(L-O)>=720?no=381:(eo=L-O,no=0),381===no&&(Z+=d*e+i*oo,H+=i*e+r*oo,O+=e);$=H+i*eo+r*eo*eo*.5,a=Z+d*eo+i*eo*eo*.5,1!==h?(G=a-2*Y+2*so,to=$-R):(G=a-Y-k+so,to=$-R),$=R+to}return{atime:O,em:_,argpm:k,inclm:P,xli:Z,mm:G,xni:H,nodem:Y,dndt:to,nm:$}}({irez:e.irez,d2201:e.d2201,d2211:e.d2211,d3210:e.d3210,d3222:e.d3222,d4410:e.d4410,d4422:e.d4422,d5220:e.d5220,d5232:e.d5232,d5421:e.d5421,d5433:e.d5433,dedt:e.dedt,del1:e.del1,del2:e.del2,del3:e.del3,didt:e.didt,dmdt:e.dmdt,dnodt:e.dnodt,domdt:e.domdt,argpo:e.argpo,argpdot:e.argpdot,t:e.t,tc:q,gsto:e.gsto,xfact:e.xfact,xlamo:e.xlamo,no:e.no,atime:e.atime,em:G,argpm:f,inclm:A,xli:e.xli,mm:C,xni:e.xni,nodem:S,nm:L});G=H.em,f=H.argpm,A=H.inclm,C=H.mm,S=H.nodem,L=H.nm}if(L<=0)return e.error=2,[!1,!1];var Y=Math.pow(r/L,x)*j*j;if(L=r/Math.pow(Y,1.5),(G-=E)>=1||G<-.001)return e.error=1,[!1,!1];G<1e-6&&(G=1e-6),D=(C+=e.no*F)+f+S;var $=G;if(U=A,z=f%=t,R=S%=t,I=C=((D%=t)-f-S)%t,m=Math.sin(A),c=Math.cos(A),"d"===e.method){var B=u(e,{inclo:e.inclo,init:"n",ep:$,inclp:U,nodep:R,argpp:z,mp:I,opsmode:e.operationmode});if($=B.ep,R=B.nodep,z=B.argpp,I=B.mp,(U=B.inclp)<0&&(U=-U,R+=o,z-=o),$<0||$>1)return e.error=3,[!1,!1]}"d"===e.method&&(m=Math.sin(U),c=Math.cos(U),e.aycof=-.5*p*m,Math.abs(c+1)>15e-13?e.xlcof=-.25*p*m*(3+5*c)/(1+c):e.xlcof=-.25*p*m*(3+5*c)/15e-13);var J=$*Math.cos(z);T=1/(Y*(1-$*$));var K=$*Math.sin(z)+T*e.aycof,N=(I+z+R+T*e.xlcof*J-R)%t;M=N,w=9999.9;for(var Q=1;Math.abs(w)>=1e-12&&Q<=10;)a=Math.sin(M),w=(N-K*(n=Math.cos(M))+J*a-M)/(w=1-n*J-a*K),Math.abs(w)>=.95&&(w=w>0?.95:-.95),M+=w,Q+=1;var V=J*n+K*a,W=J*a-K*n,X=J*J+K*K,oo=Y*(1-X);if(oo<0)return e.error=4,[!1,!1];var to=Y*(1-V),eo=Math.sqrt(Y)*W/to,so=Math.sqrt(oo)/to,no=Math.sqrt(1-X),ao=Y/to*(a-K-J*(T=W/(1+no))),ro=Y/to*(n-J+K*T);v=Math.atan2(ao,ro);var io=(ro+ro)*ao,co=1-2*ao*ao,ho=.5*h*(T=1/oo),mo=ho*T;"d"===e.method&&(l=c*c,e.con41=3*l-1,e.x1mth2=1-l,e.x7thm1=7*l-1);var lo=to*(1-1.5*mo*no*e.con41)+.5*ho*e.x1mth2*co;if(lo<1)return e.error=6,{position:!1,velocity:!1};v-=.25*mo*e.x7thm1*io;var po=R+1.5*mo*c*io,xo=U+1.5*mo*c*m*co,go=eo-L*ho*e.x1mth2*io/r,Mo=so+L*ho*(e.x1mth2*co+1.5*e.con41)/r,fo=Math.sin(v),uo=Math.cos(v),zo=Math.sin(po),vo=Math.cos(po),yo=Math.sin(xo),bo=Math.cos(xo),qo=-zo*bo,wo=vo*bo,To=qo*fo+vo*uo,jo=wo*fo+zo*uo,Eo=yo*fo;return{position:{x:lo*To*d,y:lo*jo*d,z:lo*Eo*d},velocity:{x:(go*To+Mo*(qo*uo-vo*fo))*i,y:(go*jo+Mo*(wo*uo-zo*fo))*i,z:(go*Eo+Mo*(yo*uo))*i}}}function b(e,s){var n,a,i,c,m,g,M,f,z,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R,O,_,k,P,Z,G,H,Y,$,B,J,K,N,Q,V,W,X,oo,to,eo,so,no,ao,ro,io,co,ho,mo,lo=s.opsmode,po=s.satn,xo=s.epoch,go=s.xbstar,Mo=s.xecco,fo=s.xargpo,uo=s.xinclo,zo=s.xmo,vo=s.xno,yo=s.xnodeo;e.isimp=0,e.method="n",e.aycof=0,e.con41=0,e.cc1=0,e.cc4=0,e.cc5=0,e.d2=0,e.d3=0,e.d4=0,e.delmo=0,e.eta=0,e.argpdot=0,e.omgcof=0,e.sinmao=0,e.t=0,e.t2cof=0,e.t3cof=0,e.t4cof=0,e.t5cof=0,e.x1mth2=0,e.x7thm1=0,e.mdot=0,e.nodedot=0,e.xlcof=0,e.xmcof=0,e.nodecf=0,e.irez=0,e.d2201=0,e.d2211=0,e.d3210=0,e.d3222=0,e.d4410=0,e.d4422=0,e.d5220=0,e.d5232=0,e.d5421=0,e.d5433=0,e.dedt=0,e.del1=0,e.del2=0,e.del3=0,e.didt=0,e.dmdt=0,e.dnodt=0,e.domdt=0,e.e3=0,e.ee2=0,e.peo=0,e.pgho=0,e.pho=0,e.pinco=0,e.plo=0,e.se2=0,e.se3=0,e.sgh2=0,e.sgh3=0,e.sgh4=0,e.sh2=0,e.sh3=0,e.si2=0,e.si3=0,e.sl2=0,e.sl3=0,e.sl4=0,e.gsto=0,e.xfact=0,e.xgh2=0,e.xgh3=0,e.xgh4=0,e.xh2=0,e.xh3=0,e.xi2=0,e.xi3=0,e.xl2=0,e.xl3=0,e.xl4=0,e.xlamo=0,e.zmol=0,e.zmos=0,e.atime=0,e.xli=0,e.xni=0,e.bstar=go,e.ecco=Mo,e.argpo=fo,e.inclo=uo,e.mo=zo,e.no=vo,e.nodeo=yo,e.operationmode=lo;e.init="y",e.t=0;var bo=function(o){var e=o.ecco,s=o.epoch,n=o.inclo,a=o.opsmode,d=o.no,i=e*e,c=1-i,m=Math.sqrt(c),l=Math.cos(n),p=l*l,g=Math.pow(r/d,x),M=.75*h*(3*p-1)/(m*c),f=M/(g*g),u=g*(1-f*f-f*(1/3+134*f*f/81));d/=1+(f=M/(u*u));var z,y=Math.pow(r/d,x),b=Math.sin(n),q=y*c,w=1-5*p,T=-w-p-p,j=1/y,E=q*q,F=y*(1-e);if("a"===a){var A=s-7305,C=Math.floor(A+1e-8),L=.017202791694070362;(z=(1.7321343856509375+L*C+(L+t)*(A-C)+A*A*5075514194322695e-30)%t)<0&&(z+=t)}else z=v(s+2433281.5);return{no:d,method:"n",ainv:j,ao:y,con41:T,con42:w,cosio:l,cosio2:p,eccsq:i,omeosq:c,posq:E,rp:F,rteosq:m,sinio:b,gsto:z}}({satn:po,ecco:e.ecco,epoch:xo,inclo:e.inclo,no:e.no,method:e.method,opsmode:e.operationmode}),qo=bo.ao,wo=bo.con42,To=bo.cosio,jo=bo.cosio2,Eo=bo.eccsq,Fo=bo.omeosq,Ao=bo.posq,Co=bo.rp,Lo=bo.rteosq,So=bo.sinio;if(e.no=bo.no,e.con41=bo.con41,e.gsto=bo.gsto,e.error=0,Fo>=0||e.no>=0){if(e.isimp=0,Co<220/d+1&&(e.isimp=1),R=1.0122292763545218,C=1.8802768006108976e-9,(E=(Co-1)*d)<156){R=E-78,E<98&&(R=20);var Uo=(120-R)/d;C=Uo*Uo*Uo*Uo,R=R/d+1}F=1/Ao,oo=1/(qo-R),e.eta=qo*e.ecco*oo,w=e.eta*e.eta,q=e.ecco*e.eta,A=Math.abs(1-w),c=(M=(g=C*Math.pow(oo,4))/Math.pow(A,3.5))*e.no*(qo*(1+1.5*w+q*(4+w))+.375*h*oo/A*e.con41*(8+3*w*(8+w))),e.cc1=e.bstar*c,m=0,e.ecco>1e-4&&(m=-2*g*oo*p*e.no*So/e.ecco),e.x1mth2=1-jo,e.cc4=2*e.no*M*qo*Fo*(e.eta*(2+.5*w)+e.ecco*(.5+2*w)-h*oo/(qo*A)*(-3*e.con41*(1-2*q+w*(1.5-.5*q))+.75*e.x1mth2*(2*w-q*(1+w))*Math.cos(2*e.argpo))),e.cc5=2*M*qo*Fo*(1+2.75*(w+q)+q*w),f=jo*jo,W=.5*(V=1.5*h*F*e.no)*h*F,X=-.46875*l*F*F*e.no,e.mdot=e.no+.5*V*Lo*e.con41+.0625*W*Lo*(13-78*jo+137*f),e.argpdot=-.5*V*wo+.0625*W*(7-114*jo+395*f)+X*(3-36*jo+49*f),eo=-V*To,e.nodedot=eo+(.5*W*(4-19*jo)+2*X*(3-7*jo))*To,to=e.argpdot+e.nodedot,e.omgcof=e.bstar*m*Math.cos(e.argpo),e.xmcof=0,e.ecco>1e-4&&(e.xmcof=-x*g*e.bstar/q),e.nodecf=3.5*Fo*eo*e.cc1,e.t2cof=1.5*e.cc1,Math.abs(To+1)>15e-13?e.xlcof=-.25*p*So*(3+5*To)/(1+To):e.xlcof=-.25*p*So*(3+5*To)/15e-13,e.aycof=-.5*p*So;var Do=1+e.eta*Math.cos(e.mo);if(e.delmo=Do*Do*Do,e.sinmao=Math.sin(e.mo),e.x7thm1=7*jo-1,2*o/e.no>=225){e.method="d",e.isimp=1,0,T=e.inclo;var Io=function(o){var e,s,n,a,d,r,i,c,h,m,l,p,x,g,M,f,u,z,v,y,b,q,w,T,j,E,F,A,C,L,S,U,D,I,R,O,_,k,P,Z,G,H,Y,$,B,J,K,N,Q,V,W,X,oo,to,eo,so,no,ao,ro,io,co,ho,mo,lo=o.epoch,po=o.ep,xo=o.argpp,go=o.tc,Mo=o.inclp,fo=o.nodep,uo=.01675,zo=.0549,vo=o.np,yo=po,bo=Math.sin(fo),qo=Math.cos(fo),wo=Math.sin(xo),To=Math.cos(xo),jo=Math.sin(Mo),Eo=Math.cos(Mo),Fo=yo*yo,Ao=1-Fo,Co=Math.sqrt(Ao),Lo=lo+18261.5+go/1440,So=(4.523602-.00092422029*Lo)%t,Uo=Math.sin(So),Do=Math.cos(So),Io=.91375164-.03568096*Do,Ro=Math.sqrt(1-Io*Io),Oo=.089683511*Uo/Ro,_o=Math.sqrt(1-Oo*Oo),ko=5.8351514+.001944368*Lo,Po=.39785416*Uo/Ro,Zo=_o*Do+.91744867*Oo*Uo;Po=Math.atan2(Po,Zo),Po+=ko-So;var Go=Math.cos(Po),Ho=Math.sin(Po);y=.1945905,b=-.98088458,T=.91744867,j=.39785416,q=qo,w=bo,l=29864797e-13;for(var Yo=1/vo,$o=0;$o<2;)eo=-6*(e=y*q+b*T*w)*(d=-jo*(i=-y*w+b*T*q)+Eo*(c=b*j))+Fo*(-24*(p=e*To+(s=Eo*i+jo*c)*wo)*(z=d*To)-6*(g=-e*wo+s*To)*(f=d*wo)),so=-6*(e*(r=-jo*(h=b*w+y*T*q)+Eo*(m=y*j))+(n=-b*q+y*T*w)*d)+Fo*(-24*((x=n*To+(a=Eo*h+jo*m)*wo)*z+p*(v=r*To))+-6*(g*(u=r*wo)+(M=-n*wo+a*To)*f)),no=-6*n*r+Fo*(-24*x*v-6*M*u),ao=6*s*d+Fo*(24*p*f-6*g*z),ro=6*(a*d+s*r)+Fo*(24*(x*f+p*u)-6*(M*z+g*v)),io=6*a*r+Fo*(24*x*u-6*M*v),X=(X=3*(e*e+s*s)+(co=12*p*p-3*g*g)*Fo)+X+Ao*co,oo=(oo=6*(e*n+s*a)+(ho=24*p*x-6*g*M)*Fo)+oo+Ao*ho,to=(to=3*(n*n+a*a)+(mo=12*x*x-3*M*M)*Fo)+to+Ao*mo,J=-.5*(K=l*Yo)/Co,B=-15*yo*(N=K*Co),Q=p*g+x*M,V=x*g+p*M,W=x*M-p*g,1===($o+=1)&&(E=B,F=J,A=K,C=N,L=Q,S=V,U=W,D=X,I=oo,R=to,O=eo,_=so,k=no,P=ao,Z=ro,G=io,H=co,Y=ho,$=mo,y=Go,b=Ho,T=Io,j=Ro,q=_o*qo+Oo*bo,w=bo*_o-qo*Oo,l=4.7968065e-7);return{snodm:bo,cnodm:qo,sinim:jo,cosim:Eo,sinomm:wo,cosomm:To,day:Lo,e3:2*B*W,ee2:2*B*V,em:yo,emsq:Fo,gam:ko,peo:0,pgho:0,pho:0,pinco:0,plo:0,rtemsq:Co,se2:2*E*S,se3:2*E*U,sgh2:2*C*Y,sgh3:2*C*($-H),sgh4:-18*C*uo,sh2:-2*F*Z,sh3:-2*F*(G-P),si2:2*F*_,si3:2*F*(k-O),sl2:-2*A*I,sl3:-2*A*(R-D),sl4:-2*A*(-21-9*Fo)*uo,s1:B,s2:J,s3:K,s4:N,s5:Q,s6:V,s7:W,ss1:E,ss2:F,ss3:A,ss4:C,ss5:L,ss6:S,ss7:U,sz1:D,sz2:I,sz3:R,sz11:O,sz12:_,sz13:k,sz21:P,sz22:Z,sz23:G,sz31:H,sz32:Y,sz33:$,xgh2:2*N*ho,xgh3:2*N*(mo-co),xgh4:-18*N*zo,xh2:-2*J*ro,xh3:-2*J*(io-ao),xi2:2*J*so,xi3:2*J*(no-eo),xl2:-2*K*oo,xl3:-2*K*(to-X),xl4:-2*K*(-21-9*Fo)*zo,nm:vo,z1:X,z2:oo,z3:to,z11:eo,z12:so,z13:no,z21:ao,z22:ro,z23:io,z31:co,z32:ho,z33:mo,zmol:(.2299715*Lo-ko+4.7199672)%t,zmos:(6.2565837+.017201977*Lo)%t}}({epoch:xo,ep:e.ecco,argpp:e.argpo,tc:0,inclp:e.inclo,nodep:e.nodeo,np:e.no,e3:e.e3,ee2:e.ee2,peo:e.peo,pgho:e.pgho,pho:e.pho,pinco:e.pinco,plo:e.plo,se2:e.se2,se3:e.se3,sgh2:e.sgh2,sgh3:e.sgh3,sgh4:e.sgh4,sh2:e.sh2,sh3:e.sh3,si2:e.si2,si3:e.si3,sl2:e.sl2,sl3:e.sl3,sl4:e.sl4,xgh2:e.xgh2,xgh3:e.xgh3,xgh4:e.xgh4,xh2:e.xh2,xh3:e.xh3,xi2:e.xi2,xi3:e.xi3,xl2:e.xl2,xl3:e.xl3,xl4:e.xl4,zmol:e.zmol,zmos:e.zmos});e.e3=Io.e3,e.ee2=Io.ee2,e.peo=Io.peo,e.pgho=Io.pgho,e.pho=Io.pho,e.pinco=Io.pinco,e.plo=Io.plo,e.se2=Io.se2,e.se3=Io.se3,e.sgh2=Io.sgh2,e.sgh3=Io.sgh3,e.sgh4=Io.sgh4,e.sh2=Io.sh2,e.sh3=Io.sh3,e.si2=Io.si2,e.si3=Io.si3,e.sl2=Io.sl2,e.sl3=Io.sl3,e.sl4=Io.sl4,a=Io.sinim,n=Io.cosim,z=Io.em,b=Io.emsq,L=Io.s1,S=Io.s2,U=Io.s3,D=Io.s4,I=Io.s5,O=Io.ss1,_=Io.ss2,k=Io.ss3,P=Io.ss4,Z=Io.ss5,G=Io.sz1,H=Io.sz3,Y=Io.sz11,$=Io.sz13,B=Io.sz21,J=Io.sz23,K=Io.sz31,N=Io.sz33,e.xgh2=Io.xgh2,e.xgh3=Io.xgh3,e.xgh4=Io.xgh4,e.xh2=Io.xh2,e.xh3=Io.xh3,e.xi2=Io.xi2,e.xi3=Io.xi3,e.xl2=Io.xl2,e.xl3=Io.xl3,e.xl4=Io.xl4,e.zmol=Io.zmol,e.zmos=Io.zmos,j=Io.nm,so=Io.z1,no=Io.z3,ao=Io.z11,ro=Io.z13,io=Io.z21,co=Io.z23,ho=Io.z31,mo=Io.z33;var Ro=u(e,{inclo:T,init:e.init,ep:e.ecco,inclp:e.inclo,nodep:e.nodeo,argpp:e.argpo,mp:e.mo,opsmode:e.operationmode});e.ecco=Ro.ep,e.inclo=Ro.inclp,e.nodeo=Ro.nodep,e.argpo=Ro.argpp,e.mo=Ro.mp,0,0,0;var Oo=function(e){var s,n,a,d,i,c,h,m,l,p,g,M,f,u,z,v,y,b=e.cosim,q=e.argpo,w=e.s1,T=e.s2,j=e.s3,E=e.s4,F=e.s5,A=e.sinim,C=e.ss1,L=e.ss2,S=e.ss3,U=e.ss4,D=e.ss5,I=e.sz1,R=e.sz3,O=e.sz11,_=e.sz13,k=e.sz21,P=e.sz23,Z=e.sz31,G=e.sz33,H=e.t,Y=e.tc,$=e.gsto,B=e.mo,J=e.mdot,K=e.no,N=e.nodeo,Q=e.nodedot,V=e.xpidot,W=e.z1,X=e.z3,oo=e.z11,to=e.z13,eo=e.z21,so=e.z23,no=e.z31,ao=e.z33,ro=e.ecco,io=e.eccsq,co=e.emsq,ho=e.em,mo=e.argpm,lo=e.inclm,po=e.mm,xo=e.nm,go=e.nodem,Mo=e.irez,fo=e.atime,uo=e.d2201,zo=e.d2211,vo=e.d3210,yo=e.d3222,bo=e.d4410,qo=e.d4422,wo=e.d5220,To=e.d5232,jo=e.d5421,Eo=e.d5433,Fo=e.dedt,Ao=e.didt,Co=e.dmdt,Lo=e.dnodt,So=e.domdt,Uo=e.del1,Do=e.del2,Io=e.del3,Ro=e.xfact,Oo=e.xlamo,_o=e.xli,ko=e.xni,Po=.0043752690880113,Zo=.00015835218,Go=119459e-10;Mo=0,xo<.0052359877&&xo>.0034906585&&(Mo=1),xo>=.00826&&xo<=.00924&&ho>=.5&&(Mo=2);var Ho=-Go*L*(k+P);(lo<.052359877||lo>o-.052359877)&&(Ho=0),0!==A&&(Ho/=A);var Yo=-Zo*T*(eo+so);(lo<.052359877||lo>o-.052359877)&&(Yo=0),So=U*Go*(Z+G-6)-b*Ho+E*Zo*(no+ao-6),Lo=Ho,0!==A&&(So-=b/A*Yo,Lo+=Yo/A);var $o=($+Y*Po)%t;if(ho+=(Fo=C*Go*D+w*Zo*F)*H,lo+=(Ao=L*Go*(O+_)+T*Zo*(oo+to))*H,mo+=So*H,go+=Lo*H,po+=(Co=-Go*S*(I+R-14-6*co)-Zo*j*(W+X-14-6*co))*H,0!==Mo){if(z=Math.pow(xo/r,x),2===Mo){var Bo=ho,Jo=co;y=(ho=ro)*(co=io),ho<=.65?(a=3.616-13.247*ho+16.29*co,d=117.39*ho-19.302-228.419*co+156.591*y,i=109.7927*ho-18.9068-214.6334*co+146.5816*y,c=242.694*ho-41.122-471.094*co+313.953*y,h=841.88*ho-146.407-1629.014*co+1083.435*y,m=3017.977*ho-532.114-5740.032*co+3708.276*y):(a=331.819*ho-72.099-508.738*co+266.724*y,d=1582.851*ho-346.844-2415.925*co+1246.113*y,i=1554.908*ho-342.585-2366.899*co+1215.972*y,c=4758.686*ho-1052.797-7193.992*co+3651.957*y,h=16178.11*ho-3581.69-24462.77*co+12422.52*y,m=ho>.715?29936.92*ho-5149.66-54087.36*co+31324.56*y:1464.74-4664.75*ho+3763.64*co),ho<.7?(g=4988.61*ho-919.2277-9064.77*co+5542.21*y,l=4568.6173*ho-822.71072-8491.4146*co+5337.524*y,p=4690.25*ho-853.666-8624.77*co+5341.4*y):(g=161616.52*ho-37995.78-229838.2*co+109377.94*y,l=218913.95*ho-51752.104-309468.16*co+146349.42*y,p=170470.89*ho-40023.88-242699.48*co+115605.82*y),uo=(f=17891679e-13*(u=xo*xo*3*(z*z)))*(s=.75*(1+2*b+(v=b*b)))*(-.306-.44*(ho-.64)),zo=f*(1.5*(M=A*A))*a,vo=(f=3.7393792e-7*(u*=z))*(1.875*A*(1-2*b-3*v))*d,yo=f*(-1.875*A*(1+2*b-3*v))*i,bo=(f=2*(u*=z)*7.3636953e-9)*(35*M*s)*c,qo=f*(39.375*M*M)*h,wo=(f=1.1428639e-7*(u*=z))*(9.84375*A*(M*(1-2*b-5*v)+.33333333*(4*b-2+6*v)))*m,To=f*(A*(4.92187512*M*(-2-4*b+10*v)+6.56250012*(1+2*b-3*v)))*p,jo=(f=2*u*2.1765803e-9)*(29.53125*A*(2-8*b+v*(8*b-12+10*v)))*l,Eo=f*(29.53125*A*(-2-8*b+v*(12+8*b-10*v)))*g,Oo=(B+N+N-($o+$o))%t,Ro=J+Co+2*(Q+Lo-Po)-K,ho=Bo,co=Jo}1===Mo&&(n=1+b,Do=2*(Uo=3*xo*xo*z*z)*(s=.75*(1+b)*(1+b))*(1+co*(.8125*co-2.5))*17891679e-13,Io=3*Uo*(n*=1.875*n*n)*(1+co*(6.60937*co-6))*2.2123015e-7*z,Uo=Uo*(.9375*A*A*(1+3*b)-.75*(1+b))*(d=1+2*co)*21460748e-13*z,Oo=(B+N+q-$o)%t,Ro=J+V+Co+So+Lo-(K+Po)),_o=Oo,ko=K,fo=0,xo=K+0}return{em:ho,argpm:mo,inclm:lo,mm:po,nm:xo,nodem:go,irez:Mo,atime:fo,d2201:uo,d2211:zo,d3210:vo,d3222:yo,d4410:bo,d4422:qo,d5220:wo,d5232:To,d5421:jo,d5433:Eo,dedt:Fo,didt:Ao,dmdt:Co,dndt:0,dnodt:Lo,domdt:So,del1:Uo,del2:Do,del3:Io,xfact:Ro,xlamo:Oo,xli:_o,xni:ko}}({cosim:n,emsq:b,argpo:e.argpo,s1:L,s2:S,s3:U,s4:D,s5:I,sinim:a,ss1:O,ss2:_,ss3:k,ss4:P,ss5:Z,sz1:G,sz3:H,sz11:Y,sz13:$,sz21:B,sz23:J,sz31:K,sz33:N,t:e.t,tc:0,gsto:e.gsto,mo:e.mo,mdot:e.mdot,no:e.no,nodeo:e.nodeo,nodedot:e.nodedot,xpidot:to,z1:so,z3:no,z11:ao,z13:ro,z21:io,z23:co,z31:ho,z33:mo,ecco:e.ecco,eccsq:Eo,em:z,argpm:0,inclm:T,mm:0,nm:j,nodem:0,irez:e.irez,atime:e.atime,d2201:e.d2201,d2211:e.d2211,d3210:e.d3210,d3222:e.d3222,d4410:e.d4410,d4422:e.d4422,d5220:e.d5220,d5232:e.d5232,d5421:e.d5421,d5433:e.d5433,dedt:e.dedt,didt:e.didt,dmdt:e.dmdt,dnodt:e.dnodt,domdt:e.domdt,del1:e.del1,del2:e.del2,del3:e.del3,xfact:e.xfact,xlamo:e.xlamo,xli:e.xli,xni:e.xni});e.irez=Oo.irez,e.atime=Oo.atime,e.d2201=Oo.d2201,e.d2211=Oo.d2211,e.d3210=Oo.d3210,e.d3222=Oo.d3222,e.d4410=Oo.d4410,e.d4422=Oo.d4422,e.d5220=Oo.d5220,e.d5232=Oo.d5232,e.d5421=Oo.d5421,e.d5433=Oo.d5433,e.dedt=Oo.dedt,e.didt=Oo.didt,e.dmdt=Oo.dmdt,e.dnodt=Oo.dnodt,e.domdt=Oo.domdt,e.del1=Oo.del1,e.del2=Oo.del2,e.del3=Oo.del3,e.xfact=Oo.xfact,e.xlamo=Oo.xlamo,e.xli=Oo.xli,e.xni=Oo.xni}1!==e.isimp&&(i=e.cc1*e.cc1,e.d2=4*qo*oo*i,Q=e.d2*oo*e.cc1/3,e.d3=(17*qo+R)*Q,e.d4=.5*Q*qo*oo*(221*qo+31*R)*e.cc1,e.t3cof=e.d2+2*i,e.t4cof=.25*(3*e.d3+e.cc1*(12*e.d2+10*i)),e.t5cof=.2*(3*e.d4+12*e.cc1*e.d3+6*e.d2*e.d2+15*i*(2*e.d2+i)))}y(e,0),e.init="n"}function q(o){return function(o){if(Array.isArray(o))return w(o)}(o)||function(o){if("undefined"!=typeof Symbol&&Symbol.iterator in Object(o))return Array.from(o)}(o)||function(o,t){if(!o)return;if("string"==typeof o)return w(o,t);var e=Object.prototype.toString.call(o).slice(8,-1);"Object"===e&&o.constructor&&(e=o.constructor.name);if("Map"===e||"Set"===e)return Array.from(o);if("Arguments"===e||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e))return w(o,t)}(o)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}()}function w(o,t){(null==t||t>o.length)&&(t=o.length);for(var e=0,s=new Array(t);e<t;e++)s[e]=o[e];return s}function T(o){return o*s}function j(o){return o*e}function E(o){var t=o.longitude,e=o.latitude,s=o.height,n=6378.137,a=(n-6356.7523142)/n,d=2*a-a*a,r=n/Math.sqrt(1-d*(Math.sin(e)*Math.sin(e)));return{x:(r+s)*Math.cos(e)*Math.cos(t),y:(r+s)*Math.cos(e)*Math.sin(t),z:(r*(1-d)+s)*Math.sin(e)}}return{constants:Object.freeze({__proto__:null,pi:o,twoPi:t,deg2rad:e,rad2deg:s,minutesPerDay:n,mu:a,earthRadius:d,xke:r,vkmpersec:i,tumin:c,j2:h,j3:m,j4:l,j3oj2:p,x2o3:x}),propagate:function(){for(var o=arguments.length,t=new Array(o),e=0;e<o;e++)t[e]=arguments[e];var s=t[0],a=Array.prototype.slice.call(t,1),d=f.apply(void 0,q(a)),r=(d-s.jdsatepoch)*n;return y(s,r)},sgp4:y,twoline2satrec:function(t,s){var n=1440/(2*o),a=0,d={error:0};d.satnum=t.substring(2,7),d.epochyr=parseInt(t.substring(18,20),10),d.epochdays=parseFloat(t.substring(20,32)),d.ndot=parseFloat(t.substring(33,43)),d.nddot=parseFloat(".".concat(parseInt(t.substring(44,50),10),"E").concat(t.substring(50,52))),d.bstar=parseFloat("".concat(t.substring(53,54),".").concat(parseInt(t.substring(54,59),10),"E").concat(t.substring(59,61))),d.inclo=parseFloat(s.substring(8,16)),d.nodeo=parseFloat(s.substring(17,25)),d.ecco=parseFloat(".".concat(s.substring(26,33))),d.argpo=parseFloat(s.substring(34,42)),d.mo=parseFloat(s.substring(43,51)),d.no=parseFloat(s.substring(52,63)),d.no/=n,d.a=Math.pow(d.no*c,-2/3),d.ndot/=1440*n,d.nddot/=1440*n*1440,d.inclo*=e,d.nodeo*=e,d.argpo*=e,d.mo*=e,d.alta=d.a*(1+d.ecco)-1,d.altp=d.a*(1-d.ecco)-1;var r=g(a=d.epochyr<57?d.epochyr+2e3:d.epochyr+1900,d.epochdays),i=r.mon,h=r.day,m=r.hr,l=r.minute,p=r.sec;return d.jdsatepoch=f(a,i,h,m,l,p),b(d,{opsmode:"i",satn:d.satnum,epoch:d.jdsatepoch-2433281.5,xbstar:d.bstar,xecco:d.ecco,xargpo:d.argpo,xinclo:d.inclo,xmo:d.mo,xno:d.no,xnodeo:d.nodeo}),d},gstime:v,jday:f,invjday:function(o,t){var e=o-2415019.5,s=e/365.25,n=1900+Math.floor(s),a=Math.floor(.25*(n-1901)),d=e-(365*(n-1900)+a)+1e-11;d<1&&(d=e-(365*((n-=1)-1900)+(a=Math.floor(.25*(n-1901)))));var r=g(n,d),i=r.mon,c=r.day,h=r.hr,m=r.minute,l=r.sec-864e-9;return t?[n,i,c,h,m,Math.floor(l)]:new Date(Date.UTC(n,i-1,c,h,m,Math.floor(l)))},dopplerFactor:function(o,t,e){var s=7292115e-11,n={x:t.x-o.x,y:t.y-o.y,z:t.z-o.z};n.w=Math.sqrt(Math.pow(n.x,2)+Math.pow(n.y,2)+Math.pow(n.z,2));var a=e.x+s*o.y,d=e.y-s*o.x,r=e.z,i=(n.x*a+n.y*d+n.z*r)/n.w;return 1+i/299792.458*(i>=0?1:-1)},radiansToDegrees:T,degreesToRadians:j,degreesLat:function(t){if(t<-o/2||t>o/2)throw new RangeError("Latitude radians must be in range [-pi/2; pi/2].");return T(t)},degreesLong:function(t){if(t<-o||t>o)throw new RangeError("Longitude radians must be in range [-pi; pi].");return T(t)},radiansLat:function(o){if(o<-90||o>90)throw new RangeError("Latitude degrees must be in range [-90; 90].");return j(o)},radiansLong:function(o){if(o<-180||o>180)throw new RangeError("Longitude degrees must be in range [-180; 180].");return j(o)},geodeticToEcf:E,eciToGeodetic:function(e,s){for(var n=6378.137,a=Math.sqrt(e.x*e.x+e.y*e.y),d=(n-6356.7523142)/n,r=2*d-d*d,i=Math.atan2(e.y,e.x)-s;i<-o;)i+=t;for(;i>o;)i-=t;for(var c,h=0,m=Math.atan2(e.z,Math.sqrt(e.x*e.x+e.y*e.y));h<20;)c=1/Math.sqrt(1-r*(Math.sin(m)*Math.sin(m))),m=Math.atan2(e.z+n*c*r*Math.sin(m),a),h+=1;return{longitude:i,latitude:m,height:a/Math.cos(m)-n*c}},eciToEcf:function(o,t){return{x:o.x*Math.cos(t)+o.y*Math.sin(t),y:o.x*-Math.sin(t)+o.y*Math.cos(t),z:o.z}},ecfToEci:function(o,t){return{x:o.x*Math.cos(t)-o.y*Math.sin(t),y:o.x*Math.sin(t)+o.y*Math.cos(t),z:o.z}},ecfToLookAngles:function(t,e){var s,n,a,d,r,i,c=function(o,t){var e=o.longitude,s=o.latitude,n=E(o),a=t.x-n.x,d=t.y-n.y,r=t.z-n.z;return{topS:Math.sin(s)*Math.cos(e)*a+Math.sin(s)*Math.sin(e)*d-Math.cos(s)*r,topE:-Math.sin(e)*a+Math.cos(e)*d,topZ:Math.cos(s)*Math.cos(e)*a+Math.cos(s)*Math.sin(e)*d+Math.sin(s)*r}}(t,e);return n=(s=c).topS,a=s.topE,d=s.topZ,r=Math.sqrt(n*n+a*a+d*d),i=Math.asin(d/r),{azimuth:Math.atan2(-a,n)+o,elevation:i,rangeSat:r}}}}));
+
+</script>
+<script>
+(()=>{
+'use strict';
+const D2R=Math.PI/180, R2D=180/Math.PI, TAU=Math.PI*2;
+const $=id=>document.getElementById(id);
+const glc=$('gl'), hud=$('hud'), ctx=hud.getContext('2d'), vid=$('vid');
+
+/* ---------- bandas: frecuencias y longitudes de onda reales ---------- */
+const BANDAS={
+  fm:      {nombre:'radio FM',              f:'88–108 MHz',     lambda:3.0,   hz:9.8e7,  tinte:[1,.62,.30]},
+  tv:      {nombre:'televisión digital',    f:'470–698 MHz',    lambda:.5,    hz:6e8,    tinte:[.92,.42,.82]},
+  cel:     {nombre:'telefonía celular',     f:'700–2600 MHz',   lambda:.2,    hz:1.9e9,  tinte:[.35,.80,1]},
+  adsb:    {nombre:'ADS-B · aviones',        f:'1090 MHz',       lambda:.275,  hz:1.09e9, tinte:[1,.88,.45]},
+  gnss:    {nombre:'navegación GNSS',        f:'1176–1602 MHz',  lambda:.19,   hz:1.5e9,  tinte:[.55,1,.70]},
+  starlink:{nombre:'Starlink',               f:'10.7–12.7 GHz',  lambda:.025,  hz:1.2e10, tinte:[.80,.86,1]},
+  geo:     {nombre:'satélites geoestacionarios (TV)', f:'3.7–12.7 GHz', lambda:.03, hz:1.2e10, tinte:[1,.50,.48]},
+  iss:     {nombre:'estación espacial',     f:'145.8 MHz',      lambda:2.06,  hz:1.458e8,tinte:[1,1,1]},
+  movil:   {nombre:'tu teléfono',           f:'0.7–6 GHz',      lambda:.125,  hz:2.4e9,  tinte:[.75,.75,.75]},
+  wifi:    {nombre:'WiFi',                  f:'2.4 / 5 GHz',    lambda:.125,  hz:2.4e9,  tinte:[.35,.80,1]},
+  wifi5:   {nombre:'WiFi',                  f:'5 GHz',          lambda:.06,   hz:5.5e9,  tinte:[.35,.80,1]},
+  bt:      {nombre:'Bluetooth',             f:'2.4 GHz',        lambda:.125,  hz:2.44e9, tinte:[.35,.80,1]},
+  calor:   {nombre:'calor de tu cuerpo (infrarrojo)', f:'≈ 32 THz', lambda:9.4e-6, hz:3.2e13, tinte:[1,.35,.12]},
+  cosmico: {nombre:'muones de rayos cósmicos', f:'partículas de ≈ 4 GeV', lambda:3e-16, hz:1e21, tinte:[.6,1,.75]}
+};
+
+/* ---------- estado ---------- */
+const S={
+  modo:'visor', cara:'user', esp:.233, imag:24, obs:.85, cal:.5, cruces:0, muones:0,
+  capas:{camara:true,gnss:true,starlink:false,geo:true,aviones:true,antenas:true,edificios:true,tu:true},
+  amp:.7, fov:60, norte:0, radio:360,
+  pos:null, ref:null, manual:false, yaw:0, pitch:8,
+  B:{r:[1,0,0],u:[0,0,1],b:[0,-1,0]}, Bt:null, screenAng:0,
+  camOk:false, oriOk:false, geoMsg:'esperando', satMsg:'—', avMsg:'—', antMsg:'—', ediMsg:'—',
+  sel:null
+};
+const CAPAS=[['camara','cámara'],['gnss','GNSS'],['starlink','Starlink'],['geo','cinturón geo'],['aviones','aviones'],['antenas','antenas'],['edificios','edificios'],['tu','tu teléfono']];
+try{const g=JSON.parse(localStorage.getItem('vizta.ajustes')||'null');if(g){Object.assign(S.capas,g.capas||{});['amp','fov','norte','radio','esp','imag','obs','cal'].forEach(k=>{if(typeof g[k]==='number')S[k]=g[k];});}}catch(e){}
+function guarda(){try{localStorage.setItem('vizta.ajustes',JSON.stringify({capas:S.capas,amp:S.amp,fov:S.fov,norte:S.norte,radio:S.radio,esp:S.esp,imag:S.imag,obs:S.obs,cal:S.cal}));}catch(e){}}
+
+/* ---------- utilidades ---------- */
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const enuDir=(az,el)=>{const c=Math.cos(el);return [c*Math.sin(az),c*Math.cos(az),Math.sin(el)];};
+const wrap180=a=>((a%360)+540)%360-180;
+const nf0=new Intl.NumberFormat('es-MX',{maximumFractionDigits:0});
+const nf1=new Intl.NumberFormat('es-MX',{maximumFractionDigits:1,minimumFractionDigits:1});
+const fmtD=m=>m<1000?nf0.format(m)+' m':(m<100000?nf1.format(m/1000):nf0.format(m/1000))+' km';
+const fmtL=l=>l>=1?nf1.format(l)+' m':l>=.01?nf1.format(l*100)+' cm':l>=1e-3?nf1.format(l*1e3)+' mm':l>=1e-6?nf1.format(l*1e6)+' µm':l>=1e-9?nf1.format(l*1e9)+' nm':l>=1e-12?nf1.format(l*1e12)+' pm':'< 1 pm';
+const fmtHz=f=>f>=1e18?nf1.format(f/1e18)+' EHz':f>=1e15?nf1.format(f/1e15)+' PHz':f>=1e12?nf1.format(f/1e12)+' THz':f>=1e9?nf1.format(f/1e9)+' GHz':nf1.format(f/1e6)+' MHz';
+/* espectro en escala logarítmica real: 1 MHz (0) a ≈ 3·10^20 Hz (1) */
+const posOf=f=>Math.max(0,Math.min(1,(Math.log10(f)-6)/14.5));
+const hzOf=p=>Math.pow(10,6+p*14.5);
+const REGIONES=[[.2,'radio'],[.41,'microondas'],[.593,'infrarrojo'],[.614,'luz visible'],[.72,'ultravioleta'],[.9,'rayos X'],[1.01,'rayos gamma']];
+const region=p=>REGIONES.find(r=>p<r[0])[1];
+const PALETA=[[0,[1,.62,.30]],[.2,[.35,.80,1]],[.47,[1,.32,.12]],[.603,[1,1,1]],[.67,[.72,.5,1]],[.8,[.75,.95,1]],[1,[.55,1,.72]]];
+function colorAt(p){for(let i=1;i<PALETA.length;i++){if(p<=PALETA[i][0]){const a=PALETA[i-1],b=PALETA[i],k=(p-a[0])/(b[0]-a[0]);return [0,1,2].map(j=>a[1][j]+(b[1][j]-a[1][j])*k);}}return PALETA[PALETA.length-1][1];}
+const visib=p=>Math.max(.07,Math.exp(-Math.pow((p-S.esp)/.13,2)));
+function toM(lat,lon){return [(lon-S.ref.lon)*D2R*6378137*Math.cos(S.ref.lat*D2R),(lat-S.ref.lat)*D2R*6378137];}
+function obsGd(){const p=S.pos;return {latitude:p.lat*D2R,longitude:p.lon*D2R,height:(p.alt||0)/1000};}
+
+/* ---------- orientación ---------- */
+let haveAbs=false, iosOff=null;
+function basisFromEuler(a,b,g){
+  a*=D2R;b*=D2R;g*=D2R;
+  const cX=Math.cos(b),cY=Math.cos(g),cZ=Math.cos(a),sX=Math.sin(b),sY=Math.sin(g),sZ=Math.sin(a);
+  const m11=cZ*cY-sZ*sX*sY, m12=-cX*sZ, m13=cY*sZ*sX+cZ*sY;
+  const m21=cY*sZ+cZ*sX*sY, m22=cZ*cX, m23=sZ*sY-cZ*cY*sX;
+  const m31=-cX*sY, m32=sX, m33=cX*cY;
+  return {r:[m11,m21,m31],u:[m12,m22,m32],b:[m13,m23,m33]};
+}
+function onOri(e,abs){
+  if(e.alpha==null||S.manual)return;
+  let a=e.alpha;
+  if(typeof e.webkitCompassHeading==='number'&&!isNaN(e.webkitCompassHeading)){
+    const off=wrap180((360-e.webkitCompassHeading)-a);
+    iosOff=iosOff==null?off:iosOff+wrap180(off-iosOff)*.05;
+    a+=iosOff;
+  }
+  S.Bt=basisFromEuler(a+S.norte,e.beta||0,e.gamma||0);
+  S.oriOk=true;
+}
+addEventListener('deviceorientationabsolute',e=>{haveAbs=true;onOri(e,true);});
+addEventListener('deviceorientation',e=>{if(!haveAbs)onOri(e,false);});
+function anguloPantalla(){const o=screen.orientation;S.screenAng=o&&typeof o.angle==='number'?o.angle:(window.orientation||0);}
+addEventListener('orientationchange',anguloPantalla);anguloPantalla();
+function basisManual(){
+  const f=enuDir(S.yaw*D2R,S.pitch*D2R), r=[Math.cos(S.yaw*D2R),-Math.sin(S.yaw*D2R),0], u=cross(r,f);
+  return {r,u,b:[-f[0],-f[1],-f[2]]};
+}
+function actualizaBase(){
+  const t=S.manual||!S.Bt?basisManual():S.Bt;
+  const k=S.manual?1:.22;
+  for(const key of ['r','u','b']){const c=S.B[key],d=t[key];S.B[key]=norm([c[0]+(d[0]-c[0])*k,c[1]+(d[1]-c[1])*k,c[2]+(d[2]-c[2])*k]);}
+}
+function rumbo(){
+  const f=[-S.B.b[0],-S.B.b[1],-S.B.b[2]];
+  const v=Math.abs(f[2])>.8?S.B.u:f; // de plano: manda la parte alta del teléfono
+  return {hdg:(Math.atan2(v[0],v[1])*R2D+360)%360, alt:Math.asin(Math.max(-1,Math.min(1,f[2])))*R2D};
+}
+
+/* ---------- proyección a la pantalla ---------- */
+let W=0,H=0,DPR=1,GLS=.7;
+function proyecta(az,el){
+  const d=enuDir(az,el), B=S.B;
+  let vx=dot(B.r,d), vy=dot(B.u,d); const vz=dot(B.b,d);
+  if(vz>-.03)return null;
+  if(!S.manual&&S.screenAng){const t=S.screenAng*D2R,c=Math.cos(t),s=Math.sin(t);const x=vx*c-vy*s,y=vx*s+vy*c;vx=x;vy=y;}
+  const f=(H/2)/Math.tan(S.fov*D2R/2);
+  return {x:W/2+f*vx/(-vz), y:H/2-f*vy/(-vz)};
+}
+
+/* ---------- satélites (CelesTrak + satellite.js) ---------- */
+const GRUPOS=[
+  {id:'gps-ops',banda:'gnss',corto:'GPS'},{id:'galileo',banda:'gnss',corto:'Galileo'},
+  {id:'glo-ops',banda:'gnss',corto:'GLONASS'},{id:'beidou',banda:'gnss',corto:'BeiDou'},
+  {id:'stations',banda:'iss',corto:'estación'},{id:'starlink',banda:'starlink',corto:'Starlink',opcional:true}
+];
+const sats=[]; const cargados={};
+async function tle(id){
+  const k='vizta.tle.'+id; let cache=null;
+  try{cache=JSON.parse(localStorage.getItem(k)||'null');}catch(e){}
+  if(cache&&Date.now()-cache.t<12*3600e3)return cache.txt;
+  try{
+    const r=await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP='+id+'&FORMAT=tle');
+    if(!r.ok)throw new Error(r.status);
+    const txt=await r.text(); if(!/^1 /m.test(txt))throw new Error('vacío');
+    try{localStorage.setItem(k,JSON.stringify({t:Date.now(),txt}));}catch(e){}
+    return txt;
+  }catch(e){ if(cache)return cache.txt; throw e; }
+}
+async function cargaGrupo(g){
+  if(cargados[g.id])return; cargados[g.id]='cargando'; estado();
+  try{
+    const l=(await tle(g.id)).split(/\r?\n/).map(s=>s.trimEnd());
+    for(let i=0;i+2<l.length+1;i++){
+      if(l[i+1]&&l[i+1].startsWith('1 ')&&l[i+2]&&l[i+2].startsWith('2 ')){
+        let nombre=l[i].trim();
+        if(g.id==='stations'&&!/ISS \(ZARYA\)|CSS \(TIANHE\)/.test(nombre)){i+=2;continue;}
+        try{sats.push({tipo:'sat',banda:g.banda,grupo:g.corto,nombre,rec:satellite.twoline2satrec(l[i+1],l[i+2]),az:0,el:-1,rango:0,fuente:'CelesTrak (órbita calculada con SGP4)'});}catch(e){}
+        i+=2;
+      }
+    }
+    cargados[g.id]='ok';
+  }catch(e){cargados[g.id]='error';}
+  estado();
+}
+function cargaSatelites(){GRUPOS.forEach(g=>{if(!g.opcional||S.capas.starlink)cargaGrupo(g);});}
+let starIdx=0;
+function propaga(s,date,gmst,gd){
+  const pv=satellite.propagate(s.rec,date);
+  if(!pv||!pv.position){s.el=-1;return;}
+  const la=satellite.ecfToLookAngles(gd,satellite.eciToEcf(pv.position,gmst));
+  s.az=la.azimuth;s.el=la.elevation;s.rango=la.rangeSat*1000;
+}
+let ultProp=0;
+function propagaTodo(){
+  if(!S.pos)return;
+  const now=new Date(), gmst=satellite.gstime(now), gd=obsGd(), t=Date.now();
+  if(t-ultProp>1000){ultProp=t;for(const s of sats)if(s.banda!=='starlink')propaga(s,now,gmst,gd);}
+  if(S.capas.starlink){
+    const st=sats.filter(s=>s.banda==='starlink'); if(!st.length)return;
+    for(let n=0;n<350;n++){starIdx=(starIdx+1)%st.length;propaga(st[starIdx],now,gmst,gd);}
+  }
+}
+/* cinturón de Clarke: satélites geoestacionarios a 35 786 km, sin TLE */
+let geoBelt=[];
+function calculaGeo(){
+  if(!S.pos)return; geoBelt=[]; const gd=obsGd();
+  for(let dl=-90;dl<=90;dl+=2){
+    const lon=(S.pos.lon+dl)*D2R;
+    const la=satellite.ecfToLookAngles(gd,{x:42164*Math.cos(lon),y:42164*Math.sin(lon),z:0});
+    if(la.elevation>0)geoBelt.push({az:la.azimuth,el:la.elevation,rango:la.rangeSat*1000,lon:S.pos.lon+dl});
+  }
+}
+
+/* ---------- aviones (ADS-B) ---------- */
+let aviones=[], ultAv=0;
+async function cargaAviones(){
+  if(!S.pos||!S.capas.aviones)return; ultAv=Date.now();
+  const la=S.pos.lat.toFixed(4), lo=S.pos.lon.toFixed(4);
+  const fuentes=[
+    ['adsb.lol','https://api.adsb.lol/v2/point/'+la+'/'+lo+'/40'],
+    ['airplanes.live','https://api.airplanes.live/v2/point/'+la+'/'+lo+'/40']
+  ];
+  for(const [nom,u] of fuentes){
+    try{
+      const r=await fetch(u); if(!r.ok)continue; const j=await r.json();
+      const ac=(j.ac||j.aircraft||[]).filter(a=>typeof a.lat==='number'&&typeof a.alt_baro==='number');
+      ponAviones(ac.map(a=>({id:a.hex,nombre:(a.flight||a.r||a.hex||'').trim(),lat:a.lat,lon:a.lon,alt:(a.alt_geom||a.alt_baro)*.3048,vel:a.gs?a.gs*1.852:null,rumbo:a.track,tipo:a.t||''})),nom);
+      return;
+    }catch(e){}
+  }
+  try{
+    const p=S.pos, u='https://opensky-network.org/api/states/all?lamin='+(p.lat-.4)+'&lomin='+(p.lon-.4)+'&lamax='+(p.lat+.4)+'&lomax='+(p.lon+.4);
+    const r=await fetch(u); if(!r.ok)throw 0; const j=await r.json();
+    ponAviones((j.states||[]).filter(s=>s[6]!=null&&!s[8]).map(s=>({id:s[0],nombre:(s[1]||s[0]).trim(),lat:s[6],lon:s[5],alt:s[13]||s[7]||0,vel:s[9]?s[9]*3.6:null,rumbo:s[10],tipo:''})),'OpenSky');
+  }catch(e){S.avMsg='sin acceso a ADS-B';estado();}
+}
+function ponAviones(lista,fuente){
+  const gd=obsGd();
+  aviones=lista.map(a=>{
+    const la=satellite.ecfToLookAngles(gd,satellite.geodeticToEcf({latitude:a.lat*D2R,longitude:a.lon*D2R,height:a.alt/1000}));
+    return Object.assign(a,{tipo:'avion',banda:'adsb',az:la.azimuth,el:la.elevation,rango:la.rangeSat*1000,m:toM(a.lat,a.lon),fuente:fuente+' (transpondedor ADS-B)',modelo:a.tipo});
+  });
+  S.avMsg=aviones.length+' · '+fuente; estado();
+}
+
+/* ---------- antenas y edificios (OpenStreetMap vía Overpass) ---------- */
+let antenas=[], edificios=[], ultOSM=null;
+async function overpass(q){
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+  if(!r.ok)throw new Error(r.status); return r.json();
+}
+function clasifica(t){
+  const s=JSON.stringify(t).toLowerCase();
+  if(t['communication:television']==='yes'||/television|televisi/.test(s))return 'tv';
+  if(t['communication:radio']==='yes'||/\bradio\b|\bfm\b/.test(s)&&!/mobile/.test(s))return 'fm';
+  if(t['tower:type']==='broadcast')return 'tv';
+  return 'cel';
+}
+async function cargaOSM(){
+  if(!S.pos)return; ultOSM={lat:S.pos.lat,lon:S.pos.lon};
+  const {lat,lon}=S.pos;
+  S.antMsg='consultando';S.ediMsg='consultando';estado();
+  const qa='[out:json][timeout:25];(nwr["man_made"~"^(mast|tower|antenna|communications_tower)$"](around:4000,'+lat+','+lon+');nwr["communication:mobile_phone"](around:4000,'+lat+','+lon+');nwr["tower:type"~"communication|broadcast"](around:8000,'+lat+','+lon+'););out center tags;';
+  overpass(qa).then(j=>{
+    const vistos=new Set();
+    antenas=(j.elements||[]).map(e=>{
+      const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon; if(la==null)return null;
+      const t=e.tags||{}; if(t.man_made==='tower'&&!t['tower:type']&&!Object.keys(t).some(k=>k.startsWith('communication')))return null;
+      const k=la.toFixed(4)+lo.toFixed(4); if(vistos.has(k))return null; vistos.add(k);
+      const banda=clasifica(t), h=parseFloat(t.height)||(t.man_made==='antenna'?20:30);
+      return {tipo:'antena',banda,nombre:t.name||t.operator||({tv:'antena de televisión',fm:'antena de radio',cel:'antena de telefonía'})[banda],lat:la,lon:lo,h,m:toM(la,lo),fuente:'OpenStreetMap (antena mapeada)',tags:t};
+    }).filter(Boolean);
+    S.antMsg=antenas.length+' en OpenStreetMap'; posicionaAntenas(); estado();
+  }).catch(()=>{S.antMsg='Overpass no respondió';estado();});
+  const qe='[out:json][timeout:25];way["building"](around:'+Math.max(250,S.radio*1.2)+','+lat+','+lon+');out geom;';
+  overpass(qe).then(j=>{
+    edificios=(j.elements||[]).filter(e=>e.geometry).map(e=>{const a=new Float32Array(e.geometry.length*2);e.geometry.forEach((g,i)=>{const m=toM(g.lat,g.lon);a[i*2]=m[0];a[i*2+1]=m[1];});return a;});
+    S.ediMsg=edificios.length+' edificios'; estado();
+  }).catch(()=>{S.ediMsg='Overpass no respondió';estado();});
+}
+function posicionaAntenas(){
+  if(!S.pos)return; const o=toM(S.pos.lat,S.pos.lon);
+  for(const a of antenas){
+    const de=a.m[0]-o[0], dn=a.m[1]-o[1], d=Math.hypot(de,dn)||1;
+    a.dist=d; a.rango=d; a.az=Math.atan2(de,dn); a.el=Math.atan2(a.h-1.5-d*d/(2*6371000)*.87,d);
+  }
+}
+
+/* ---------- ubicación ---------- */
+function ponPos(lat,lon,alt,acc,msg){
+  if(alt==null&&lat>19&&lat<19.8&&lon>-99.5&&lon<-98.8)alt=2240; // Valle de México, si el GPS no da altitud
+  const nueva=!S.pos; S.pos={lat,lon,alt:alt||0,acc};
+  if(!S.ref)S.ref={lat,lon};
+  S.geoMsg=msg; ultProp=0; calculaGeo(); posicionaAntenas();
+  if(nueva){cargaSatelites();cargaAviones();cargaOSM();}
+  else if(ultOSM&&distKm(ultOSM,S.pos)>.3)cargaOSM();
+  estado();
+}
+function distKm(a,b){const x=(b.lon-a.lon)*Math.cos(a.lat*D2R),y=b.lat-a.lat;return Math.hypot(x,y)*111.32;}
+function pideUbicacion(){
+  if(!navigator.geolocation){ponPos(19.4352,-99.1412,2240,null,'sin GPS · Bellas Artes, CDMX');return;}
+  let primera=true;
+  const def=setTimeout(()=>{if(!S.pos)ponPos(19.4352,-99.1412,2240,null,'sin ubicación · Bellas Artes, CDMX');},9000);
+  navigator.geolocation.watchPosition(p=>{
+    clearTimeout(def);
+    const c=p.coords; ponPos(c.latitude,c.longitude,c.altitude,c.accuracy,'GPS ±'+nf0.format(c.accuracy)+' m');
+    primera=false;
+  },()=>{clearTimeout(def);if(!S.pos)ponPos(19.4352,-99.1412,2240,null,'ubicación negada · Bellas Artes, CDMX');},{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+}
+
+/* ---------- cámara: frontal (óptica, sin voltear) o trasera ---------- */
+let stream=null, caraActual=null;
+const camQuerida=()=>S.modo==='ventana'?'environment':S.cara;
+async function abreCamara(){
+  if(!S.capas.camara)return;
+  const cara=camQuerida();
+  if(stream&&caraActual===cara)return;
+  if(stream)cierraCamara(true);
+  caraActual=cara;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:cara},width:{ideal:1280},height:{ideal:720}},audio:false});
+    vid.srcObject=stream; await vid.play().catch(()=>{}); S.camOk=true;
+    if(S.modo==='visor'&&!seg&&segEstado==='—')cargaSeg();
+  }catch(e){S.camOk=false;caraActual=null;}
+  estado();
+}
+function cierraCamara(silencio){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}caraActual=null;S.camOk=false;if(!silencio)estado();}
+
+/* ---------- el cuerpo: segmentación en el navegador (MediaPipe) o silueta simbólica ---------- */
+const MP='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2';
+const MODELO='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+let seg=null, segEstado='—', ultSeg=0;
+const M={data:null,w:0,h:0,cover:false,nuevo:false,area:0};
+async function cargaSeg(){
+  segEstado='cargando';estado();
+  try{
+    const mod=await import(MP+'/vision_bundle.mjs');
+    const fs=await mod.FilesetResolver.forVisionTasks(MP+'/wasm');
+    const op=d=>({baseOptions:{modelAssetPath:MODELO,delegate:d},runningMode:'VIDEO',outputCategoryMask:false,outputConfidenceMasks:true});
+    try{seg=await mod.ImageSegmenter.createFromOptions(fs,op('GPU'));}catch(e){seg=await mod.ImageSegmenter.createFromOptions(fs,op('CPU'));}
+    segEstado='ok';
+  }catch(e){console.warn(e);segEstado='error';}
+  estado();
+}
+function segmenta(){
+  if(!seg||!S.camOk||vid.readyState<2||!vid.videoWidth)return;
+  const now=performance.now(); if(now-ultSeg<55)return; ultSeg=now;
+  try{
+    seg.segmentForVideo(vid,now,r=>{
+      const ms=r.confidenceMasks; if(!ms||!ms.length)return;
+      const mk=ms.length===2?ms[1]:ms[0], inv=ms.length>2, f=mk.getAsFloat32Array();
+      if(!M.data||M.data.length!==f.length)M.data=new Uint8Array(f.length);
+      let a=0;for(let i=0;i<f.length;i++){const v=inv?1-f[i]:f[i];M.data[i]=v*255;a+=v;}
+      M.w=mk.width;M.h=mk.height;M.cover=true;M.nuevo=true;M.area=a/f.length;
+    });
+  }catch(e){}
+}
+/* sin cámara: un cuerpo simbólico que respira */
+const mc=document.createElement('canvas'), mx=mc.getContext('2d',{willReadFrequently:true});
+let ultSim=0;
+function siluetaSimbolica(t){
+  if(performance.now()-ultSim<90&&M.data)return; ultSim=performance.now();
+  const w=120,h=Math.max(60,Math.round(120*H/W)); mc.width=w;mc.height=h;
+  const s=Math.min(w,h*.62), cx=w/2+Math.sin(t*.4)*s*.02, b=1+Math.sin(t*1.1)*.012;
+  mx.fillStyle='#000';mx.fillRect(0,0,w,h);mx.fillStyle='#fff';
+  mx.beginPath();mx.ellipse(cx,h*.34,s*.15*b,s*.19*b,0,0,TAU);mx.fill();
+  mx.beginPath();mx.moveTo(cx-s*.07,h*.4);mx.lineTo(cx+s*.07,h*.4);mx.lineTo(cx+s*.08,h*.5);mx.lineTo(cx-s*.08,h*.5);mx.fill();
+  mx.beginPath();mx.moveTo(cx-s*.42*b,h*.6);mx.quadraticCurveTo(cx-s*.42,h*.5,cx-s*.2,h*.49);mx.lineTo(cx+s*.2,h*.49);mx.quadraticCurveTo(cx+s*.42,h*.5,cx+s*.42*b,h*.6);mx.lineTo(cx+s*.46*b,h+2);mx.lineTo(cx-s*.46*b,h+2);mx.closePath();mx.fill();
+  const id=mx.getImageData(0,0,w,h).data;
+  if(!M.data||M.data.length!==w*h)M.data=new Uint8Array(w*h);
+  let a=0;for(let i=0;i<w*h;i++){M.data[i]=id[i*4];a+=id[i*4];}
+  M.w=w;M.h=h;M.cover=false;M.nuevo=true;M.area=a/255/(w*h);
+}
+function escalaCover(){const ar=W/H,va=(vid.videoWidth||1)/(vid.videoHeight||1);return ar>va?[1,va/ar]:[ar/va,1];}
+function maskAt(sx,sy){
+  if(!M.data)return 0;
+  let u=sx/W,v=sy/H;
+  if(M.cover){const s=escalaCover();u=(u-.5)*s[0]+.5;v=(v-.5)*s[1]+.5;}
+  if(u<0||u>=1||v<0||v>=1)return 0;
+  return M.data[(v*M.h|0)*M.w+(u*M.w|0)]/255;
+}
+
+/* ---------- WebGL: la imagen del espacio alterada ---------- */
+const MAXE=24, MAXH=8;
+let gl=null, prog=null, U={}, tex=null, texM=null;
+function initGL(){
+  gl=glc.getContext('webgl',{preserveDrawingBuffer:true,antialias:false,alpha:false});
+  if(!gl)return;
+  const vs='attribute vec2 a;varying vec2 v;void main(){v=a*.5+.5;gl_Position=vec4(a,0.,1.);}';
+  const fs=`precision highp float;
+  uniform sampler2D uV;uniform sampler2D uM;uniform vec2 uR;uniform vec2 uVR;uniform float uT;uniform float uA;uniform float uHV;uniform float uHz;
+  uniform vec4 uE[${MAXE}];uniform vec3 uC[${MAXE}];uniform int uN;
+  uniform float uHM;uniform float uMC;uniform float uObs;uniform float uCal;uniform float uEsp;uniform vec4 uH[${MAXH}];
+  varying vec2 v;
+  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+  vec2 cover(vec2 uv){float ar=uR.x/uR.y,va=uVR.x/max(uVR.y,1.);vec2 s=vec2(1.);if(ar>va)s.y=va/ar;else s.x=ar/va;return (uv-.5)*s+.5;}
+  float mk(vec2 uv){vec2 q=uMC>.5?cover(uv):uv;q.y=1.-q.y;return texture2D(uM,q).r;}
+  float gs(float x,float c,float w){return exp(-pow((x-c)/w,2.));}
+  void main(){
+    vec2 p=v*uR;vec2 dsp=vec2(0.);float fld=0.;vec3 tn=vec3(0.);
+    for(int i=0;i<${MAXE};i++){ if(i>=uN)break; vec4 e=uE[i]; vec2 d=p-e.xy; float r=length(d)+1.;
+      float w=e.z/(1.+r/(uR.y*.4)); float s=sin((r/e.w-uT*1.6)*6.2831853);
+      dsp+=d/r*s*w; float k=w*(.5+.5*s); fld+=k; tn+=uC[i]*k; }
+    float irW=gs(uEsp,.5,.1), visW=gs(uEsp,.603,.07), xr=smoothstep(.72,.88,uEsp);
+    float m=0.,halo=0.;vec2 g=vec2(0.);
+    if(uHM>.5){
+      for(int i=0;i<${MAXH};i++){vec4 e=uH[i];if(e.w<=0.)continue;vec2 d=p-e.xy;float r=length(d)+1.;
+        float ring=exp(-pow((r-e.z*uR.y*.45)/(uR.y*.035),2.))*exp(-e.z*1.6)*e.w;dsp+=d/r*ring*2.2;fld+=ring*.6;}
+      vec2 u0=v+dsp*uA*10./uR;
+      float m0=mk(u0);
+      float bl=(mk(u0+vec2(.03,0.))+mk(u0-vec2(.03,0.))+mk(u0+vec2(0.,.03))+mk(u0-vec2(0.,.03)))*.25;
+      halo=clamp(bl-m0*.6,0.,1.);
+      float wob=(sin(v.y*46.-uT*3.2+sin(v.x*17.+uT)*2.)+sin(v.y*23.-uT*2.1))*.0035*uCal*(.35+irW);
+      dsp.x+=wob*(halo*2.+m0)*uR.x/(uA*10.+.001);
+    }
+    vec2 uv=v+dsp*uA*10./uR;
+    float ca=fld*uA*.007;
+    vec3 c;
+    if(uHV>.5){vec2 q=cover(uv);q.y=1.-q.y;c=vec3(texture2D(uV,q+vec2(ca,0.)).r,texture2D(uV,q).g,texture2D(uV,q-vec2(ca,0.)).b);
+      float l=dot(c,vec3(.299,.587,.114));c=mix(c,vec3(l),.35*(1.-visW));}
+    else{vec2 gg=abs(fract(uv*uR/56.)-.5);float ln=step(.485,max(gg.x,gg.y));c=vec3(.035+.09*ln);}
+    if(uHM>.5){
+      m=mk(uv);
+      g=vec2(mk(uv+vec2(.006,0.))-mk(uv-vec2(.006,0.)),mk(uv+vec2(0.,.006))-mk(uv-vec2(0.,.006)));
+      /* la óptica se aleja de la luz visible: la imagen se oscurece */
+      c*=mix(.42,1.,visW);
+      /* obsidiana: negro vidrioso, borde especular, reflejo refractado */
+      float rim=clamp(length(g)*5.,0.,1.);
+      vec2 qr=cover(uv+g*.12);qr.y=1.-qr.y;
+      float refl=uHV>.5?dot(texture2D(uV,qr).rgb,vec3(.3,.59,.11)):.1;
+      float brillo=.5+.5*sin(uT*.6+v.y*7.+v.x*3.);
+      vec3 obs=vec3(.010,.011,.016)+vec3(.55,.6,.68)*rim*(.45+.4*brillo)+vec3(.16,.17,.2)*refl*refl;
+      c=mix(c,obs,m*uObs*(1.-xr*.7));
+      /* rayos X: el cuerpo se vuelve translúcido */
+      float l=dot(c,vec3(.3,.59,.11));
+      c=mix(c,vec3(.78,.92,1.)*(1.-l)*.8+rim*.3,m*xr*.85);
+      /* calor: el cuerpo irradia */
+      c+=vec3(1.,.34,.08)*(halo*1.1+m*.18)*uCal*(.15+irW*.85);
+    }
+    float f=clamp(fld*uA,0.,1.4);
+    float lv=12.-f*7.;c=mix(c,floor(c*lv)/lv,clamp(f,0.,1.)*.55);
+    c+=tn*uA*.16;
+    c*=1.-.10*f*step(.5,fract(p.y*.25+uT*24.));
+    c+=(h(p+fract(uT*7.)*91.)-.5)*(.035+uHz*.14*uA+xr*.05);
+    gl_FragColor=vec4(c,1.);
+  }`;
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(o));return o;};
+  try{
+    prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,vs));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+  }catch(e){console.warn(e);gl=null;return;}
+  gl.useProgram(prog);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const al=gl.getAttribLocation(prog,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+  ['uV','uM','uR','uVR','uT','uA','uHV','uHz','uE','uC','uN','uHM','uMC','uObs','uCal','uEsp','uH'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+  const nueva=()=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));return t;};
+  gl.activeTexture(gl.TEXTURE0);tex=nueva();gl.activeTexture(gl.TEXTURE1);texM=nueva();gl.activeTexture(gl.TEXTURE0);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+}
+const EA=new Float32Array(MAXE*4), CA=new Float32Array(MAXE*3), HA=new Float32Array(MAXH*4);
+function dibujaGL(em,haze,t,visor){
+  if(!gl)return;
+  const hv=S.capas.camara&&S.camOk&&vid.readyState>=2&&vid.videoWidth>0;
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
+  if(hv){try{gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,vid);}catch(e){}}
+  const hm=visor&&!!M.data;
+  if(hm&&M.nuevo){gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,texM);gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,M.w,M.h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,M.data);M.nuevo=false;gl.activeTexture(gl.TEXTURE0);}
+  const n=Math.min(MAXE,em.length);
+  for(let i=0;i<n;i++){const e=em[i];EA[i*4]=e.x*GLS;EA[i*4+1]=(H-e.y)*GLS;EA[i*4+2]=e.w;EA[i*4+3]=(14+52*Math.sqrt(BANDAS[e.banda].lambda))*GLS;const c=BANDAS[e.banda].tinte;CA[i*3]=c[0];CA[i*3+1]=c[1];CA[i*3+2]=c[2];}
+  HA.fill(0);
+  if(visor)golpes.slice(-MAXH).forEach((g,i)=>{HA[i*4]=g.x*GLS;HA[i*4+1]=(H-g.y)*GLS;HA[i*4+2]=t-g.t;HA[i*4+3]=g.w;});
+  gl.viewport(0,0,glc.width,glc.height);
+  gl.uniform2f(U.uR,glc.width,glc.height);gl.uniform2f(U.uVR,vid.videoWidth||1,vid.videoHeight||1);
+  gl.uniform1f(U.uT,t);gl.uniform1f(U.uA,S.amp);gl.uniform1f(U.uHV,hv?1:0);gl.uniform1f(U.uHz,haze);
+  gl.uniform4fv(U.uE,EA);gl.uniform3fv(U.uC,CA);gl.uniform1i(U.uN,n);gl.uniform1i(U.uV,0);gl.uniform1i(U.uM,1);
+  gl.uniform1f(U.uHM,hm?1:0);gl.uniform1f(U.uMC,M.cover?1:0);gl.uniform1f(U.uObs,S.obs);gl.uniform1f(U.uCal,S.cal);gl.uniform1f(U.uEsp,S.esp);
+  gl.uniform4fv(U.uH,HA);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+
+/* ---------- visor: cada señal es una línea que atraviesa el cuerpo ---------- */
+const lineas=[], golpes=[], destellos=[]; let fuentesV=new Map(), ultFuentes=0, muAcc=0;
+const MAXL=240, LARGO=4.5;
+const zCuerpo=()=>S.cara==='user'?1.0:2.4;
+const neg=a=>[-a[0],-a[1],-a[2]];
+function baseCam(){const B=S.B;return S.cara==='user'?{R:neg(B.r),U:B.u,F:B.b}:{R:B.r,U:B.u,F:neg(B.b)};}
+function aCam(v,C){let x=dot(v,C.R),y=dot(v,C.U);const z=-dot(v,C.F);
+  if(!S.manual&&S.screenAng){const t=S.screenAng*D2R*(S.cara==='user'?-1:1),c=Math.cos(t),s=Math.sin(t);const a=x*c-y*s,b=x*s+y*c;x=a;y=b;}
+  return [x,y,z];}
+function focal(){return (H/2)/Math.tan(S.fov*D2R/2);}
+function pantalla(P,f){if(P[2]>-.12)return null;return [W/2+f*P[0]/(-P[2]),H/2-f*P[1]/(-P[2])];}
+let semilla=1;const rnd=()=>{semilla=(semilla*16807)%2147483647;return semilla/2147483647;};
+function puntoCuerpo(Z,f,soloCuerpo){
+  for(let i=0;i<30;i++){const sx=Math.random()*W,sy=Math.random()*H;if(maskAt(sx,sy)>.5)return [(sx-W/2)*Z/f,-(sy-H/2)*Z/f,-Z];}
+  if(soloCuerpo)return null;
+  return [(Math.random()-.5)*W*Z/f,(Math.random()-.5)*H*Z/f,-Z];
+}
+function imaginada(i){
+  semilla=1000+i*7919;rnd();
+  const az=rnd()*TAU, el=(rnd()-.35)*.6, b=rnd()<.3?'bt':(rnd()<.4?'wifi5':'wifi');
+  return {clave:'i'+i,o:{tipo:'imaginada',banda:b,nombre:(b==='bt'?'Bluetooth':'WiFi')+' imaginada '+(i+1),az,el,origen:'imaginada',fuente:'imaginada: el navegador no puede escanear WiFi ni Bluetooth'},w:.25+rnd()*.6};
+}
+function actualizaFuentes(){
+  const F=new Map(), pon=(k,o,w)=>{const p=fuentesV.get(k);F.set(k,{clave:k,o,w,acc:p?p.acc:Math.random()});};
+  if(S.capas.gnss)for(const s of sats)if(s.el>0&&s.banda!=='starlink')pon('s'+s.nombre,s,fuerza(s)+.15);
+  if(S.capas.starlink){let n=0;for(const s of sats)if(s.el>0&&s.banda==='starlink'&&n++<40)pon('s'+s.nombre,s,.12);}
+  if(S.capas.aviones)for(const a of aviones)if(a.rango<80000)pon('a'+a.id,a,Math.max(.2,fuerza(a)));
+  if(S.capas.antenas)antenas.slice().sort((a,b)=>a.dist-b.dist).slice(0,16).forEach((a,i)=>pon('n'+i+a.nombre,a,Math.max(.15,fuerza(a))));
+  if(S.capas.geo)for(let i=0;i<geoBelt.length;i+=12){const g=geoBelt[i];pon('g'+i,{tipo:'geo',banda:'geo',nombre:'satélite geoestacionario',az:g.az,el:g.el,rango:g.rango,fuente:'cálculo orbital (órbita geoestacionaria)'},.25);}
+  if(S.capas.tu){const cn=navigator.connection;pon('tel',{tipo:'tel',banda:'movil',nombre:'tu teléfono',origen:'medida',fuente:cn&&cn.effectiveType?'medida: red '+cn.effectiveType+(cn.downlink?' · '+cn.downlink+' Mb/s':''):'tu teléfono emite cuando se conecta'},.7);}
+  for(let i=0;i<S.imag;i++){const m=imaginada(i);const p=fuentesV.get(m.clave);F.set(m.clave,{...m,acc:p?p.acc:Math.random()});}
+  fuentesV=F;
+}
+function nace(src,C,f){
+  const o=src.o, Z=zCuerpo();
+  let d, Q, vel=2.4;
+  if(o.tipo==='tel'){d=norm([(Math.random()-.5)*.5,(Math.random()-.5)*.5,-1]);}
+  else if(o.tipo==='calor'){d=norm([(Math.random()-.5)*1.2,(Math.random()-.2)*1.2,1]);vel=.9;}
+  else{const s=enuDir(o.az,o.el);d=norm(aCam(neg(s),C));}
+  Q=o.tipo==='calor'?puntoCuerpo(Z,f,true):puntoCuerpo(Z,f,Math.random()<.65&&M.data&&M.area>.02);
+  if(!Q)Q=puntoCuerpo(Z,f,false);
+  let pp=Math.abs(d[2])<.95?cross(d,[0,0,1]):cross(d,[0,1,0]); pp=norm(pp);
+  const pos=posOf(BANDAS[o.banda].hz);
+  lineas.push({o,d,Q,pp,pos,w:src.w,t0:performance.now()/1000,vel,fase:Math.random()*TAU,dentro:false,lado:null,s0:o.tipo==='calor'?0:-LARGO});
+}
+function emiteCalor(dt,C,f){
+  if(!M.data||M.area<.01||S.cal<=0)return;
+  const n=dt*S.cal*7*(.3+visib(posOf(BANDAS.calor.hz)));
+  for(let i=0;i<n||Math.random()<n-i;i++){if(lineas.length>=MAXL)return;nace({o:{tipo:'calor',banda:'calor',nombre:'calor de tu cuerpo',origen:'imaginada',fuente:'tu cuerpo irradia ≈ 100 W en infrarrojo; la línea es imaginada'},w:.45},C,f);if(i>4)break;}
+}
+function muones(dt,t,C,f){
+  const tasa=1000/60; // ≈ 1 muón por cm² por minuto · ~0.1 m² de cuerpo visto desde arriba
+  muAcc+=dt*tasa; const n=Math.floor(muAcc); muAcc-=n; S.muones+=n;
+  const v=visib(.97);
+  for(let i=0;i<n;i++){
+    if(Math.random()>.7)continue;
+    const c=Math.pow(Math.random(),.25), th=Math.acos(c), ph=Math.random()*TAU;
+    const dw=[-Math.sin(th)*Math.sin(ph),-Math.sin(th)*Math.cos(ph),-c];
+    const d=norm(aCam(dw,C)), Q=puntoCuerpo(zCuerpo(),f,!!(M.data&&M.area>.02))||puntoCuerpo(zCuerpo(),f,false);
+    const a=pantalla([Q[0]-d[0]*3,Q[1]-d[1]*3,Q[2]-d[2]*3],f), b=pantalla([Q[0]+d[0]*3,Q[1]+d[1]*3,Q[2]+d[2]*3],f);
+    if(a&&b)destellos.push({a,b,t0:t,v:.35+v*.65});
+  }
+  ctx.lineWidth=1;
+  for(let i=destellos.length-1;i>=0;i--){const e=destellos[i],age=t-e.t0;if(age>.35){destellos.splice(i,1);continue;}
+    const al=e.v*(1-age/.35);const c=colorAt(.97);
+    ctx.strokeStyle='rgba('+(c[0]*255|0)+','+(c[1]*255|0)+','+(c[2]*255|0)+','+al.toFixed(3)+')';
+    ctx.beginPath();ctx.moveTo(e.a[0],e.a[1]);ctx.lineTo(e.b[0],e.b[1]);ctx.stroke();}
+}
+function dibujaVisor(t,dt){
+  ctx.clearRect(0,0,W,H); visibles=[];
+  if(S.camOk&&seg)segmenta(); else if(!S.camOk)siluetaSimbolica(t);
+  else if(segEstado==='error')M.data=null;
+  if(performance.now()-ultFuentes>1000){ultFuentes=performance.now();actualizaFuentes();}
+  const C=baseCam(), f=focal(), Z=zCuerpo(), now=performance.now()/1000;
+  for(const src of fuentesV.values()){src.acc+=dt*(.18+.55*src.w)*(.5+visib(posOf(BANDAS[src.o.banda].hz)));while(src.acc>=1){src.acc-=1;if(lineas.length<MAXL)nace(src,C,f);}}
+  emiteCalor(dt,C,f);
+  ctx.save();ctx.globalCompositeOperation='lighter';ctx.lineCap='round';
+  let total=0;
+  for(let i=lineas.length-1;i>=0;i--){
+    const L=lineas[i], age=now-L.t0, sh=L.s0+age*L.vel, fin=LARGO+1.6;
+    if(sh>fin){lineas.splice(i,1);continue;}
+    const vis=visib(L.pos)*L.w; total+=L.w;
+    const fade=Math.min(1,age*3)*Math.min(1,(fin-sh)/1.2);
+    const lam=.9*Math.pow(1-L.pos,2)+.035, A=(.03+.13*Math.pow(1-L.pos,1.5))*S.amp*(.4+L.w), nu=.6+5*L.pos;
+    const col=colorAt(L.pos), rgb=(col[0]*255|0)+','+(col[1]*255|0)+','+(col[2]*255|0);
+    const refr=Math.exp(-Math.pow((L.pos-.6)/.25,2));
+    const desde=Math.max(L.s0,sh-3.2), N=Math.max(24,Math.min(110,Math.ceil((sh-desde)/lam*7))), paso=(sh-desde)/N;
+    let prev=null, est=null; ctx.beginPath();
+    const traza=(ea,al)=>{ctx.strokeStyle='rgba('+(ea==='dentro'?'255,255,255':rgb)+','+al.toFixed(3)+')';ctx.lineWidth=ea==='dentro'?1.6:(L.pos>.85?.8:1+L.w*.8);ctx.stroke();};
+    for(let k=0;k<=N;k++){
+      const s=desde+k*paso, vib=A*Math.sin((s/lam-now*nu)*TAU+L.fase)*(L.pos>.85?.1:1);
+      const P=[L.Q[0]+L.d[0]*s+L.pp[0]*vib,L.Q[1]+L.d[1]*s+L.pp[1]*vib,L.Q[2]+L.d[2]*s+L.pp[2]*vib];
+      let sp=pantalla(P,f); if(!sp){prev=null;continue;}
+      const mm=maskAt(sp[0],sp[1]);
+      let ea='libre'; if(mm>.5){if(P[2]<-Z-.08)ea='tras';else if(P[2]<-Z+.25)ea='dentro';}
+      if(ea==='dentro'&&refr>.05)sp=[sp[0]+refr*14*Math.sin(s*9+now*2),sp[1]];
+      if(ea!==est&&prev){const al=(est==='tras'?.12:est==='dentro'?1.3:.55)*vis*fade*(.35+.65*k/N);ctx.lineTo(sp[0],sp[1]);traza(est,al);ctx.beginPath();ctx.moveTo(sp[0],sp[1]);}
+      else if(!prev)ctx.moveTo(sp[0],sp[1]); else ctx.lineTo(sp[0],sp[1]);
+      est=ea;prev=sp;
+    }
+    if(prev)traza(est,(est==='tras'?.12:est==='dentro'?1.3:.6)*vis*fade);
+    /* cabeza: el paquete de energía */
+    const Ph=[L.Q[0]+L.d[0]*sh,L.Q[1]+L.d[1]*sh,L.Q[2]+L.d[2]*sh], hp=pantalla(Ph,f);
+    if(hp&&sh<LARGO){ctx.fillStyle='rgba('+rgb+','+Math.min(1,vis*1.6*fade).toFixed(3)+')';ctx.beginPath();ctx.arc(hp[0],hp[1],1.2+L.w*1.6,0,TAU);ctx.fill();visibles.push({o:L.o,x:hp[0],y:hp[1]});
+      /* ¿atravesó el cuerpo? */
+      const lado=Ph[2]<-Z;
+      if(L.lado!==null&&lado!==L.lado&&L.o.tipo!=='calor'&&maskAt(hp[0],hp[1])>.5){S.cruces++;golpes.push({x:hp[0],y:hp[1],t:now-t0s,w:.4+L.w*.6*vis});if(golpes.length>32)golpes.shift();}
+      L.lado=lado;}
+  }
+  muones(dt,now-t0s,C,f);
+  ctx.restore();
+  dibujaGL([],Math.min(1,lineas.length/400),now-t0s,true);
+  marcoVisor();
+  return total*.1;
+}
+function marcoVisor(){
+  const sb=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb'))||0;
+  const w=Math.min(300,W-40), x0=(W-w)/2, y=H-sb-(W<600?100:74);
+  for(let i=0;i<w;i++){const c=colorAt(i/w);ctx.fillStyle='rgba('+(c[0]*255|0)+','+(c[1]*255|0)+','+(c[2]*255|0)+',.75)';ctx.fillRect(x0+i,y,1,3);}
+  const vx=x0+w*.593,vw=w*.021;ctx.strokeStyle='rgba(255,255,255,.6)';ctx.strokeRect(vx,y-2,vw,7);
+  const mxx=x0+w*S.esp;ctx.fillStyle='#fff';ctx.fillRect(mxx-1,y-6,2,15);
+  ctx.font=FONT;ctx.textBaseline='bottom';ctx.fillStyle='rgba(220,220,220,.85)';ctx.textAlign='left';if(mxx-x0>70)ctx.fillText('radio',x0,y-4);ctx.textAlign='right';if(x0+w-mxx>70)ctx.fillText('gamma',x0+w,y-4);ctx.textAlign='center';ctx.fillText(region(S.esp),mxx,y-8);ctx.textAlign='left';
+  ctx.save();ctx.globalCompositeOperation='difference';ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(W/2-8,H/2);ctx.lineTo(W/2+8,H/2);ctx.moveTo(W/2,H/2-8);ctx.lineTo(W/2,H/2+8);ctx.stroke();ctx.restore();
+}
+
+/* ---------- fuerza aparente de cada señal (interpretación) ---------- */
+function fuerza(o){
+  switch(o.tipo){
+    case 'antena': return (o.banda==='cel'?1:1.4)*Math.min(1,250/Math.max(o.dist,1));
+    case 'avion': return .8*Math.min(1,5000/Math.max(o.rango,1));
+    case 'sat': return o.banda==='iss'?.5:o.banda==='starlink'?.06:.22;
+    case 'geo': return .14;
+  }
+  return 0;
+}
+function objetos(){
+  const L=[];
+  if(S.capas.gnss)for(const s of sats)if(s.el>0&&(s.banda==='gnss'||s.banda==='iss'))L.push(s);
+  if(S.capas.starlink)for(const s of sats)if(s.el>0&&s.banda==='starlink')L.push(s);
+  if(S.capas.aviones)for(const a of aviones)if(a.el>-.05)L.push(a);
+  if(S.capas.antenas)for(const a of antenas)L.push(a);
+  return L;
+}
+
+/* ---------- dibujo: ventana ---------- */
+let visibles=[];
+const FONT='11px Inter, Arial, Helvetica, sans-serif';
+function etiqueta(x,y,txt,sub,fuerte){
+  ctx.font=FONT;ctx.textBaseline='middle';
+  ctx.fillStyle=fuerte?'rgba(255,255,255,.95)':'rgba(230,230,230,.8)';ctx.fillText(txt,x,y);
+  if(sub){ctx.fillStyle='rgba(200,200,200,.62)';ctx.fillText(sub,x,y+13);}
+}
+function dibujaVentana(t){
+  const L=objetos(), em=[]; let haze=0, total=0; visibles=[];
+  ctx.clearRect(0,0,W,H);
+  /* horizonte real */
+  ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1;ctx.beginPath();let pen=false;
+  for(let az=0;az<=360;az+=3){const p=proyecta(az*D2R,0);if(p&&p.x>-W&&p.x<2*W){pen?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);pen=true;}else pen=false;}
+  ctx.stroke();
+  /* cinturón de Clarke */
+  if(S.capas.geo&&geoBelt.length){
+    ctx.save();ctx.setLineDash([2,4]);ctx.strokeStyle='rgba(255,170,160,.7)';ctx.beginPath();pen=false;let top=null;
+    for(const g of geoBelt){const p=proyecta(g.az,g.el);if(p){pen?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);pen=true;if(!top||g.el>top.g.el)top={g,p};}else pen=false;}
+    ctx.stroke();ctx.restore();
+    if(top&&top.p.x>0&&top.p.x<W)etiqueta(top.p.x+6,top.p.y-10,'cinturón de Clarke','satélites de TV · 35 786 km');
+    for(let i=0;i<geoBelt.length;i+=6){const g=geoBelt[i],p=proyecta(g.az,g.el);total+=.14;if(p)em.push({x:p.x,y:p.y,w:.14,banda:'geo'});else haze+=.14;}
+    if(top)visibles.push({o:{tipo:'geo',banda:'geo',nombre:'cinturón de Clarke',rango:top.g.rango,az:top.g.az,el:top.g.el,fuente:'cálculo orbital (órbita geoestacionaria)'},x:top.p.x,y:top.p.y});
+  }
+  /* señales */
+  const ant=L.filter(o=>o.tipo==='antena').sort((a,b)=>a.dist-b.dist); const rotulo=new Set(ant.slice(0,8));
+  for(const o of L){
+    const w=fuerza(o); total+=w; const p=proyecta(o.az,o.el);
+    if(!p){haze+=w;continue;}
+    if(p.x<-W*.5||p.x>W*1.5||p.y<-H*.5||p.y>H*1.5){haze+=w*.5;continue;}
+    em.push({x:p.x,y:p.y,w,banda:o.banda});
+    const dentro=p.x>-20&&p.x<W+20&&p.y>-20&&p.y<H+20; if(!dentro)continue;
+    visibles.push({o,x:p.x,y:p.y});
+    const sel=S.sel===o; ctx.strokeStyle=sel?'#fff':'rgba(255,255,255,.85)';ctx.fillStyle='#fff';ctx.lineWidth=sel?2:1;
+    if(o.tipo==='sat'){
+      if(o.banda==='starlink'){ctx.fillStyle='rgba(220,226,255,.8)';ctx.fillRect(p.x-1,p.y-1,2,2);continue;}
+      ctx.beginPath();ctx.arc(p.x,p.y,o.banda==='iss'?6:4,0,TAU);ctx.stroke();
+      if(o.banda==='iss'){ctx.beginPath();ctx.moveTo(p.x-10,p.y);ctx.lineTo(p.x+10,p.y);ctx.stroke();}
+      etiqueta(p.x+8,p.y-4,o.grupo==='estación'?o.nombre:o.grupo+' · '+o.nombre.replace(/\s*\(.*\)/,''),fmtD(o.rango),sel);
+    }else if(o.tipo==='avion'){
+      ctx.strokeRect(p.x-4,p.y-4,8,8);
+      etiqueta(p.x+9,p.y-4,o.nombre||'avión',nf0.format(o.alt)+' m · '+fmtD(o.rango),sel);
+    }else{
+      ctx.beginPath();ctx.moveTo(p.x,p.y-6);ctx.lineTo(p.x+5,p.y+4);ctx.lineTo(p.x-5,p.y+4);ctx.closePath();ctx.stroke();
+      if(rotulo.has(o)||sel)etiqueta(p.x+8,p.y-4,o.nombre,fmtD(o.dist)+' · '+BANDAS[o.banda].nombre,sel);
+    }
+  }
+  /* tú también emites */
+  if(S.capas.tu){em.push({x:W/2,y:H+40,w:.45,banda:'movil'});total+=.45;}
+  em.sort((a,b)=>b.w-a.w);
+  const sl=sats.filter(s=>s.banda==='starlink'&&s.el>0).length;
+  haze=Math.min(1,haze*.12+(S.capas.starlink?sl/250:0));
+  dibujaGL(em,haze,t,false);
+  marco(t);
+  return total;
+}
+function marco(t){
+  const {hdg,alt}=rumbo(); const st=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--st'))||0;
+  /* cinta de rumbo */
+  const sb=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb'))||0;
+  const y=H-sb-(W<600?112:86), f=(H/2)/Math.tan(S.fov*D2R/2), ppd=f*D2R;
+  ctx.save();ctx.font=FONT;ctx.textAlign='center';ctx.textBaseline='top';
+  const NOM={0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SO',270:'O',315:'NO'};
+  ctx.strokeStyle='rgba(255,255,255,.55)';ctx.fillStyle='rgba(255,255,255,.85)';
+  for(let a=0;a<360;a+=5){const dx=wrap180(a-hdg)*ppd;if(Math.abs(dx)>W/2)continue;const x=W/2+dx;const big=a%15===0;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+(big?7:3));ctx.stroke();
+    if(a%45===0)ctx.fillText(NOM[a],x,y+9);else if(big&&ppd>4)ctx.fillText(a,x,y+9);}
+  ctx.restore();
+  /* retícula (diferencia) */
+  ctx.save();ctx.globalCompositeOperation='difference';ctx.strokeStyle='#fff';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W/2-14,H/2);ctx.lineTo(W/2-4,H/2);ctx.moveTo(W/2+4,H/2);ctx.lineTo(W/2+14,H/2);ctx.moveTo(W/2,H/2-14);ctx.lineTo(W/2,H/2-4);ctx.moveTo(W/2,H/2+4);ctx.lineTo(W/2,H/2+14);ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- dibujo: plano alterado ---------- */
+function dibujaPlano(t){
+  const {hdg}=rumbo(), h=hdg*D2R, ch=Math.cos(h), sh=Math.sin(h);
+  const cx=W/2, cy=H/2-10, R=Math.min(W,H)*.46, R1=R*.78, k=R1/S.radio, o=S.pos?toM(S.pos.lat,S.pos.lon):[0,0];
+  const mp=(e,n)=>{const de=e-o[0],dn=n-o[1];return [cx+(de*ch-dn*sh)*k, cy-(de*sh+dn*ch)*k];};
+  const sky=(az,el)=>{const r=R1+(R-R1)*Math.max(0,Math.min(1,el/(Math.PI/2)));const a=az-h;return [cx+r*Math.sin(a),cy-r*Math.cos(a)];};
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,W,H);
+  /* emisores sobre el plano */
+  const em=[]; let total=0; visibles=[];
+  if(S.capas.antenas)for(const a of antenas){const p=mp(a.m[0],a.m[1]);const w=fuerza(a);total+=w;em.push({x:p[0],y:p[1],w,sp:(14+52*Math.sqrt(BANDAS[a.banda].lambda)),o:a});}
+  if(S.capas.aviones)for(const a of aviones){const p=mp(a.m[0],a.m[1]);const w=fuerza(a);total+=w;em.push({x:p[0],y:p[1],w,sp:41,o:a});}
+  if(S.capas.tu){em.push({x:cx,y:cy,w:.45,sp:32});total+=.45;}
+  if(S.capas.gnss)total+=sats.filter(s=>s.el>0&&s.banda!=='starlink').length*.22;
+  const fuertes=em.slice().sort((a,b)=>b.w-a.w).slice(0,12), A=S.amp*9;
+  const warp=(x,y)=>{let dx=0,dy=0;for(const e of fuertes){const vx=x-e.x,vy=y-e.y,r=Math.hypot(vx,vy)+1;const w=e.w/(1+r/(R*.5));const s=Math.sin((r/e.sp-t*1.6)*TAU);dx+=vx/r*s*w;dy+=vy/r*s*w;}return [x+dx*A,y+dy*A];};
+  ctx.save();ctx.beginPath();ctx.arc(cx,cy,R1,0,TAU);ctx.clip();
+  /* frentes de onda */
+  for(const e of fuertes){
+    const tin=e.o?BANDAS[e.o.banda].tinte:[.8,.8,.8];
+    for(let i=0;i<7;i++){const r=((t*1.6*e.sp)+i*e.sp*1.4)%(e.sp*9.8);const al=e.w*.5*(1-r/(e.sp*9.8));if(al<.01)continue;
+      ctx.strokeStyle='rgba('+(tin[0]*255|0)+','+(tin[1]*255|0)+','+(tin[2]*255|0)+','+al.toFixed(3)+')';ctx.beginPath();ctx.arc(e.x,e.y,r,0,TAU);ctx.stroke();}
+  }
+  /* edificios alterados */
+  if(S.capas.edificios&&edificios.length){
+    ctx.strokeStyle='rgba(215,215,215,.55)';ctx.lineWidth=1;ctx.beginPath();
+    const lim=(R1+40)/k;
+    for(const b of edificios){
+      const de=b[0]-o[0],dn=b[1]-o[1]; if(Math.abs(de)>lim||Math.abs(dn)>lim)continue;
+      for(let i=0;i<b.length;i+=2){const p=mp(b[i],b[i+1]);const q=warp(p[0],p[1]);i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}
+    }
+    ctx.stroke();
+  }else if(S.capas.edificios){
+    ctx.strokeStyle='rgba(215,215,215,.18)';ctx.beginPath();const st=50*k;
+    for(let x=-R1;x<=R1;x+=st){for(let y=-R1;y<=R1;y+=st/4){const q=warp(cx+x,cy+y);y===-R1||y-st/4<-R1?ctx.moveTo(q[0],q[1]):ctx.lineTo(q[0],q[1]);}}
+    ctx.stroke();
+  }
+  ctx.restore();
+  /* antenas y aviones */
+  for(const e of em){if(!e.o)continue;const o2=e.o;let x=e.x,y=e.y;const dx=x-cx,dy=y-cy,d=Math.hypot(dx,dy);const fuera=d>R1-6;if(fuera){x=cx+dx/d*(R1-6);y=cy+dy/d*(R1-6);}
+    ctx.strokeStyle=S.sel===o2?'#fff':'rgba(255,255,255,.85)';ctx.lineWidth=S.sel===o2?2:1;
+    if(o2.tipo==='antena'){ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.closePath();ctx.stroke();if(!fuera||S.sel===o2)etiqueta(x+8,y-4,o2.nombre,fmtD(o2.dist),S.sel===o2);}
+    else{ctx.strokeRect(x-4,y-4,8,8);}
+    visibles.push({o:o2,x,y});
+  }
+  /* anillo de cielo: borde interior = horizonte, exterior = cenit */
+  ctx.strokeStyle='rgba(255,255,255,.4)';ctx.beginPath();ctx.arc(cx,cy,R1,0,TAU);ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.18)';ctx.beginPath();ctx.arc(cx,cy,R,0,TAU);ctx.stroke();
+  ctx.font=FONT;ctx.textAlign='center';ctx.textBaseline='middle';
+  const NOM=['N','E','S','O'];
+  for(let i=0;i<4;i++){const p=sky(i*Math.PI/2,-.0001);const q=[cx+(p[0]-cx)*(R+12)/R1,cy+(p[1]-cy)*(R+12)/R1];ctx.fillStyle=i===0?'#fff':'rgba(220,220,220,.75)';ctx.fillText(NOM[i],q[0],q[1]);}
+  ctx.textAlign='left';
+  if(S.capas.geo&&geoBelt.length){ctx.save();ctx.setLineDash([2,4]);ctx.strokeStyle='rgba(255,170,160,.7)';ctx.beginPath();geoBelt.forEach((g,i)=>{const p=sky(g.az,g.el);i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});ctx.stroke();ctx.restore();}
+  for(const s of sats){
+    if(s.el<=0)continue; if(s.banda==='starlink'?!S.capas.starlink:!S.capas.gnss)continue;
+    const p=sky(s.az,s.el);
+    if(s.banda==='starlink'){ctx.fillStyle='rgba(220,226,255,.7)';ctx.fillRect(p[0]-1,p[1]-1,2,2);}
+    else{ctx.strokeStyle=S.sel===s?'#fff':'rgba(255,255,255,.8)';ctx.beginPath();ctx.arc(p[0],p[1],3,0,TAU);ctx.stroke();visibles.push({o:s,x:p[0],y:p[1]});}
+  }
+  if(S.capas.aviones)for(const a of aviones){if(a.el<=0)continue;const p=sky(a.az,a.el);ctx.strokeStyle='rgba(255,230,150,.85)';ctx.strokeRect(p[0]-3,p[1]-3,6,6);}
+  /* tú */
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(cx,cy,3,0,TAU);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.6)';ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx-R1*.18*Math.sin(.4),cy-R1*.18*Math.cos(.4));ctx.moveTo(cx,cy);ctx.lineTo(cx+R1*.18*Math.sin(.4),cy-R1*.18*Math.cos(.4));ctx.stroke();
+  /* escala */
+  const m=S.radio>600?200:100, px=m*k; ctx.strokeStyle='rgba(255,255,255,.7)';ctx.beginPath();ctx.moveTo(cx-R1,cy+R+18);ctx.lineTo(cx-R1+px,cy+R+18);ctx.stroke();
+  etiqueta(cx-R1+px+6,cy+R+18,m+' m');
+  etiqueta(cx+R1-150,cy+R+18,'anillo: horizonte → cenit');
+  return total;
+}
+
+/* ---------- interfaz ---------- */
+function rango(id,key,fmt){
+  const el=$(id),v=$('v'+id.slice(1));
+  const pinta=()=>{v.textContent=fmt(S[key]);el.style.setProperty('--p',((S[key]-el.min)/(el.max-el.min)*100)+'%');};
+  el.value=S[key];pinta();
+  el.addEventListener('input',()=>{S[key]=+el.value;pinta();guarda();if(key==='norte')iosOff=iosOff;});
+}
+function armaUI(){
+  const c=$('capas');
+  CAPAS.forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.setAttribute('aria-pressed',S.capas[k]);
+    b.onclick=()=>{S.capas[k]=!S.capas[k];b.setAttribute('aria-pressed',S.capas[k]);guarda();
+      if(k==='camara')S.capas.camara?abreCamara():cierraCamara();
+      if(k==='starlink'&&S.capas.starlink)cargaGrupo(GRUPOS[5]);
+      if(k==='aviones'&&S.capas.aviones)cargaAviones();
+      estado();};
+    c.appendChild(b);});
+  rango('sAmp','amp',v=>nf0.format(v*100)+'%');
+  rango('sFov','fov',v=>v+'°');
+  rango('sNorte','norte',v=>(v>0?'+':'')+v+'°');
+  rango('sRadio','radio',v=>fmtD(v));
+  rango('sEsp','esp',v=>region(v));
+  rango('sImag','imag',v=>v);
+  rango('sObs','obs',v=>nf0.format(v*100)+'%');
+  rango('sCal','cal',v=>nf0.format(v*100)+'%');
+  const espD=()=>{const f=hzOf(S.esp);$('vEspD').textContent=fmtHz(f)+' · λ '+fmtL(299792458/f);};
+  $('sEsp').addEventListener('input',espD);espD();
+  $('sImag').addEventListener('input',()=>{ultFuentes=0;});
+  const cara=c=>{S.cara=c;$('cFrontal').setAttribute('aria-selected',c==='user');$('cTrasera').setAttribute('aria-selected',c==='environment');lineas.length=0;golpes.length=0;M.data=null;abreCamara();};
+  $('cFrontal').onclick=()=>cara('user');$('cTrasera').onclick=()=>cara('environment');
+  $('sRadio').addEventListener('change',()=>{if(S.pos)cargaOSM();});
+  const modo=m=>{S.modo=m;['Visor','Ventana','Plano'].forEach(k=>$('m'+k).setAttribute('aria-selected',m===k.toLowerCase()));
+    document.body.classList.toggle('m-visor',m==='visor');glc.style.display=m==='plano'?'none':'block';S.sel=null;$('info').classList.remove('ver');
+    if(!document.body.classList.contains('arrancando'))abreCamara();};
+  $('mVisor').onclick=()=>modo('visor');$('mVentana').onclick=()=>modo('ventana');$('mPlano').onclick=()=>modo('plano');
+  $('uiT').onclick=()=>$('ui').classList.toggle('cerrada');
+  $('iBtn').onclick=()=>$('acerca').classList.add('ver');
+  $('acercaX').onclick=()=>$('acerca').classList.remove('ver');
+  $('infoX').onclick=()=>{S.sel=null;$('info').classList.remove('ver');};
+  $('ver').onclick=()=>document.body.classList.remove('sinui');
+  addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT')return;
+    if(e.key==='h')document.body.classList.toggle('sinui');
+    if(e.key==='1')modo('visor');if(e.key==='2')modo('ventana');if(e.key==='3')modo('plano');
+    if(e.key==='Escape'){$('acerca').classList.remove('ver');$('info').classList.remove('ver');S.sel=null;}
+    if(S.manual){if(e.key==='ArrowLeft')S.yaw-=5;if(e.key==='ArrowRight')S.yaw+=5;if(e.key==='ArrowUp')S.pitch=Math.min(89,S.pitch+5);if(e.key==='ArrowDown')S.pitch=Math.max(-89,S.pitch-5);}
+  });
+  if(matchMedia('(max-width:520px)').matches)$('ui').classList.add('cerrada');
+  /* arrastrar para mirar (sin sensores) y tocar para leer una señal */
+  let dn=null;
+  hud.addEventListener('pointerdown',e=>{dn={x:e.clientX,y:e.clientY,yaw:S.yaw,pitch:S.pitch,mov:0};hud.setPointerCapture(e.pointerId);});
+  hud.addEventListener('pointermove',e=>{if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;dn.mov=Math.max(dn.mov,Math.hypot(dx,dy));
+    if(S.manual){const g=S.modo==='plano'?-.3:S.fov/H;S.yaw=dn.yaw-dx*g;if(S.modo!=='plano')S.pitch=Math.max(-89,Math.min(89,dn.pitch+dy*g));}});
+  hud.addEventListener('pointerup',e=>{if(dn&&dn.mov<8)toca(e.clientX,e.clientY);dn=null;});
+}
+function toca(x,y){
+  let mejor=null,dm=36;
+  for(const v of visibles){const d=Math.hypot(v.x-x,v.y-y);if(d<dm){dm=d;mejor=v.o;}}
+  S.sel=mejor; if(!mejor){$('info').classList.remove('ver');return;}
+  const o=mejor,b=BANDAS[o.banda];
+  const origen=o.origen||'conocida';
+  const filas=[['qué',({sat:'satélite',avion:'avión',antena:'antena',geo:'órbita',imaginada:'señal imaginada',calor:'calor',tel:'tu teléfono'})[o.tipo]],['banda',b.nombre],['región',region(posOf(b.hz))],['frecuencia',b.f],['longitud de onda','≈ '+fmtL(b.lambda)],['origen',origen]];
+  if(o.tipo==='avion'){filas.push(['altitud',nf0.format(o.alt)+' m s. n. m.']);if(o.vel)filas.push(['velocidad',nf0.format(o.vel)+' km/h']);if(o.modelo)filas.push(['modelo',o.modelo]);}
+  if(o.tipo==='antena'&&o.tags&&o.tags.operator)filas.push(['operador',o.tags.operator]);
+  if(o.rango||o.dist)filas.push(['distancia',fmtD(o.rango||o.dist)]);
+  if(o.az!=null)filas.push(['viene del acimut',nf1.format((o.az*R2D+360)%360)+'°'],['elevación',nf1.format(o.el*R2D)+'°']);
+  filas.push(['fuente',o.fuente]);
+  $('infoT').textContent=o.nombre||'señal';
+  $('infoB').innerHTML=filas.map(([k,v])=>'<div class="row"><span class="lbl">'+k+'</span><span class="val" style="text-align:right">'+String(v).replace(/</g,'&lt;')+'</span></div>').join('')+'<div class="lbl" style="margin-top:4px">'+(origen==='imaginada'?'Esta señal es imaginada: representa lo que el teléfono no puede medir.':'La dirección es real; la onda dibujada es una interpretación.')+'</div>';
+  $('info').classList.add('ver');
+}
+function estado(){
+  const g=id=>cargados[id]||'—';
+  const nSat=sats.filter(s=>s.banda!=='starlink').length, nSL=sats.filter(s=>s.banda==='starlink').length;
+  const cn=navigator.connection;
+  const L=[
+    ['cámara',S.capas.camara?(S.camOk?'<span class="ok">en vivo</span>':'sin acceso'):'apagada'],
+    ['cuerpo',S.camOk?({'—':'sin segmentar',cargando:'cargando modelo',ok:'<span class="ok">silueta en vivo</span>',error:'sin segmentación'})[segEstado]:'silueta simbólica'],
+    ['orientación',S.manual?'manual (arrastrar)':(S.oriOk?'<span class="ok">brújula</span>':'esperando')],
+    ['ubicación',S.geoMsg],
+    ['satélites',nSat?nSat+' órbitas'+(nSL?' · '+nSL+' Starlink':''):(Object.values(cargados).includes('error')?'CelesTrak no respondió':'cargando')],
+    ['aviones',S.avMsg],['antenas',S.antMsg],['edificios',S.ediMsg]
+  ];
+  if(cn&&cn.effectiveType)L.push(['tu red',cn.effectiveType+(cn.downlink?' · '+cn.downlink+' Mb/s':'')+(cn.rtt?' · '+cn.rtt+' ms':'')]);
+  $('est').innerHTML=L.map(([k,v])=>'<div class="row"><span class="lbl">'+k+'</span><span class="val" style="text-align:right">'+v+'</span></div>').join('');
+}
+let ultDock=0;
+function dock(total){
+  const now=performance.now(); if(now-ultDock<200)return; ultDock=now;
+  const {hdg,alt}=rumbo();
+  $('dRumbo').textContent=nf0.format(hdg)+'°';
+  $('dIncl').textContent=(alt>=0?'+':'')+nf0.format(alt)+'°';
+  $('dPos').textContent=S.pos?S.pos.lat.toFixed(4)+', '+S.pos.lon.toFixed(4):'—';
+  const sv=sats.filter(s=>s.el>0&&s.banda!=='starlink').length, sl=sats.filter(s=>s.el>0&&s.banda==='starlink').length;
+  $('dSat').textContent=sv+(sl?' + '+nf0.format(sl):'');
+  $('dAv').textContent=aviones.length;
+  $('dAnt').textContent=antenas.length;
+  $('dCru').textContent=nf0.format(S.cruces);
+  $('dMu').textContent=nf0.format(S.muones);
+  $('dCampo').style.width=Math.min(100,total/5*100)+'%';
+}
+
+/* ---------- tamaño y ciclo ---------- */
+function tam(){
+  DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  hud.width=W*DPR;hud.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  GLS=Math.min(DPR,1.5)*.7;glc.width=Math.round(W*GLS);glc.height=Math.round(H*GLS);
+  anguloPantalla();
+}
+addEventListener('resize',tam);
+const t0=performance.now(), t0s=t0/1000; let ultT=t0;
+function cuadro(){
+  requestAnimationFrame(cuadro);
+  const ahora=performance.now(), t=(ahora-t0)/1000, dt=Math.min(.1,(ahora-ultT)/1000); ultT=ahora;
+  actualizaBase(); propagaTodo();
+  if(S.pos&&S.capas.aviones&&Date.now()-ultAv>12000)cargaAviones();
+  const total=S.modo==='visor'?dibujaVisor(t,dt):S.modo==='ventana'?dibujaVentana(t):dibujaPlano(t);
+  dock(total);
+}
+
+/* ---------- arranque ---------- */
+async function arranca(conSensores){
+  document.body.classList.remove('arrancando');$('inicio').style.display='none';
+  if(conSensores){
+    try{if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)await DeviceOrientationEvent.requestPermission();}catch(e){}
+    abreCamara();
+    setTimeout(()=>{if(!S.oriOk){S.manual=true;estado();}},2500);
+  }else{S.manual=true;S.capas.camara=false;document.querySelector('#capas button').setAttribute('aria-pressed','false');}
+  pideUbicacion(); estado();
+}
+tam();initGL();armaUI();estado();
+$('abrir').onclick=()=>arranca(true);
+$('sinSensores').onclick=()=>arranca(false);
+requestAnimationFrame(cuadro);
+})();
+</script>
+</body>
+</html>
